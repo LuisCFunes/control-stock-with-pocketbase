@@ -13,8 +13,17 @@ export default function Suelto() {
 
   return (
     <>
-      <input type="text" name="money" onChange={handleSuelto} />
-      <h3>Suelto: {money - totalFactura}</h3>
+      {totalFactura !== 0 && (
+        <>
+          <input
+            type="number"
+            name="money"
+            placeholder="Dinero que dio el cliente"
+            onChange={handleSuelto}
+          />
+          <h3>Suelto: {money - totalFactura}</h3>
+        </>
+      )}
     </>
   );
 }
