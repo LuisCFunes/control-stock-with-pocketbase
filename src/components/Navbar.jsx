@@ -1,7 +1,7 @@
 import Container from "react-bootstrap/Container";
 import Nav from "react-bootstrap/Nav";
 import Navbar from "react-bootstrap/Navbar";
-import { Link } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 
 export default function Navigation() {
   return (
@@ -11,19 +11,19 @@ export default function Navigation() {
           <Navbar.Brand as={Link} to="/">
             Gestion de inventario
           </Navbar.Brand>
-          <Nav.Link as={Link} to="/">
+          <Nav.Link as={NavLink} to="/" className={({ isActive }) => (isActive ? "active" : "")}>
             Agregar
           </Nav.Link>
-          <Nav.Link as={Link} to="/Vender">
+          <Nav.Link as={NavLink} to="/Vender" className={({ isActive }) => (isActive ? "active" : "")}>
             Vender
           </Nav.Link>
-          <Nav.Link as={Link} to="/Facturar">
+          <Nav.Link as={NavLink} to="/Facturar" className={({ isActive }) => (isActive ? "active" : "")}>
             Facturar
           </Nav.Link>
-          <Nav.Link as={Link} to="/Editar">
+          <Nav.Link as={NavLink} to="/Editar" className={({ isActive }) => (isActive ? "active" : "")}>
             Editar
           </Nav.Link>
-          <Nav.Link as={Link} to="/Reports">
+          <Nav.Link as={NavLink} to="/Reports" className={({ isActive }) => (isActive ? "active" : "")}>
             Reportes
           </Nav.Link>
         </Nav>

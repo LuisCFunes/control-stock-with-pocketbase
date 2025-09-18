@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import { useState } from "react";
 
 export function CheckBoxText({ tipo, onTextoChange }) {
@@ -19,23 +20,36 @@ export function CheckBoxText({ tipo, onTextoChange }) {
     }
   };
 
+  const inputId = `checkbox-${tipo.replace(/\s+/g, '-').toLowerCase()}`;
+
   return (
-    <div className="d-flex">
-      <label htmlFor="checkbox" className="mx-2 p-0 my-auto text-primary">
+    <div className="mb-3">
+      <div className="form-check">
         <input
           type="checkbox"
-          id="checkbox"
-          name="nombreDescriptivo"
+          className="form-check-input"
+          id={inputId}
           checked={isChecked}
           onChange={handleCheck}
         />
-        <strong>{tipo}</strong>
-      </label>
+        <label className="form-check-label" htmlFor={inputId}>
+          <strong>{tipo}</strong>
+        </label>
+      </div>
 
       {isChecked && (
-        <div>
-          <label htmlFor="numberInput"> Ingrese el {tipo}:</label>
-          <input type="text" onChange={handleTextChange} />
+        <div className="mt-2">
+          <label htmlFor={`${inputId}-input`} className="form-label">
+            Ingrese el {tipo}:
+          </label>
+          <input
+            type="text"
+            className="form-control"
+            id={`${inputId}-input`}
+            placeholder={`Ej: Juan Pérez`}
+            value={texto}
+            onChange={handleTextChange}
+          />
         </div>
       )}
     </div>

@@ -15,7 +15,7 @@ export default function Home() {
     reset,
   } = useForm();
 
-  const { listProducts } = useData();
+  const { listProducts, loading } = useData();
 
   const onSubmit = async (data) => {
     try {
@@ -24,7 +24,7 @@ export default function Home() {
           Authorization: `Bearer ${accessToken}`,
         },
       };
-      const record = await pb.collection("Productos").create(data);
+      await pb.collection("Productos").create(data);
       withReactContent(Swal).fire({
         title: <p>Registro exitoso!</p>,
         html: `<i>El Nombre <b>${data.Nombre}</b> fue registrado con éxito</i>`,
@@ -110,7 +110,7 @@ export default function Home() {
           </form>
         </div>
       </div>
-      <ListProducts list={listProducts} showButtons={false} />
+      <ListProducts list={listProducts} showButtons={false} loading={loading} />
     </main>
   );
 }
