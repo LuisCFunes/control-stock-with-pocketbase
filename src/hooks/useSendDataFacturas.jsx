@@ -7,9 +7,12 @@ export const useSendData = (
   Tabla,
   ProductosV,
   Estado = true,
+  discount_amount = 0,
+  exonerado_amount = 0,
+  exento_amount = 0,
 ) => {
   async function putData() {
-    const datos = { Numero, Cliente, Total, ProductosV, Estado };
+    const datos = { Numero, Cliente, Total, ProductosV, Estado, discount_amount, exonerado_amount, exento_amount };
     if (datos.Cliente === "" && datos.Total === "" && datos.ProductosV === "") {
       alert("No hay datos para enviar");
       return;

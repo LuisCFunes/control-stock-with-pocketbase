@@ -4,6 +4,7 @@ import { ListProducts } from "./ListProducts";
 import { ProductCount } from "./ProductCount";
 import { ExportButton } from "./ExportExcel";
 import { SearchBar } from "./SearchBar";
+import { SalesReport } from "./SalesReport";
 
 export {
   CheckBoxNumber,
@@ -12,4 +13,5 @@ export {
   ProductCount,
   ExportButton,
   SearchBar,
+  SalesReport,
 };

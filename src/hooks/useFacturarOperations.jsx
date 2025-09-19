@@ -29,6 +29,10 @@ const useFacturarOperations = (state) => {
     totalFactura,
     "Facturas",
     cart,
+    true,
+    state.cantidades.cantidadDescuento,
+    state.cantidades.cantidadExonerado,
+    state.cantidades.cantidadExento,
   );
   const { updateQuantity } = useUpdate();
 
