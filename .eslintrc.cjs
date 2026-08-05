@@ -11,6 +11,7 @@ module.exports = {
   parserOptions: { ecmaVersion: 'latest', sourceType: 'module' },
   settings: { react: { version: '18.2' } },
   plugins: ['react-refresh'],
+  ignorePatterns: ['src/pocketbase/pb_migrations'],
   rules: {
     'react-refresh/only-export-components': [
       'warn',

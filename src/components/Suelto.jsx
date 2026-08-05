@@ -1,28 +1,40 @@
+/* eslint-disable react/prop-types */
 import { useState } from "react";
-import useFacturarOperations from "../hooks/useFacturarOperations";
-import useFacturarState from "../hooks/useFacturarState";
 
-export default function Suelto() {
+export default function Suelto({ totalFactura }) {
   const [money, setMoney] = useState(0);
-  const { state } = useFacturarState();
-  const { totalFactura } = useFacturarOperations(state);
+  const change = money - totalFactura;
 
   const handleSuelto = (e) => {
-    setMoney(e.target.value);
+    setMoney(Number(e.target.value));
   };
 
   return (
     <>
       {totalFactura !== 0 && (
-        <>
+        <div className="bg-light border rounded p-3 text-start">
+          <label htmlFor="money" className="form-label">
+            Dinero recibido (Lps.)
+          </label>
           <input
             type="number"
+            id="money"
             name="money"
-            placeholder="Dinero que dio el cliente"
+            className="form-control"
+            placeholder="0.00"
+            min="0"
+            step="0.01"
             onChange={handleSuelto}
           />
-          <h3>Suelto: {money - totalFactura}</h3>
-        </>
+          <div className="d-flex justify-content-between mt-3">
+            <span className="text-muted">Cambio:</span>
+            <span
+              className={`fw-bold ${change < 0 ? "text-danger" : "text-success"}`}
+            >
+              L. {change.toLocaleString("es-HN", { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+        </div>
       )}
     </>
   );

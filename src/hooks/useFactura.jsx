@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { pb, accessToken } from "../utilities/pocketbase_route";
+import { pb } from "../utilities/pocketbase_route";
 
 export const useFactura = () => {
   const [facturas, setFacturas] = useState([]);
@@ -8,11 +8,6 @@ export const useFactura = () => {
   useEffect(() => {
     async function fetchFacturas() {
       try {
-        pb.collection("Facturas").requestOptions = {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        };
         const data = await pb.collection("Facturas").getList(1, 1, {
           sort: "-Numero",
         });

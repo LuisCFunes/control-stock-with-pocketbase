@@ -1,12 +1,9 @@
 import redondearDecimales from "../RedondearNum";
 
-export default function Total(subtotal, impuesto,descuento) {
-  let total = subtotal + impuesto;
-  if(descuento){
+export default function Total(base15, isv15, base18, isv18, exento, exonerado, descuento) {
+  let total = base15 + isv15 + base18 + isv18 + exento + exonerado;
+  if (descuento) {
     total = total - descuento;
-    return redondearDecimales(total,2) ; 
-  }else{
-    return redondearDecimales(total,2);
   }
-  
+  return redondearDecimales(Math.max(total, 0), 2);
 }

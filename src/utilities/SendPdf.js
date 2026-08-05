@@ -16,7 +16,7 @@ const LAYOUT = {
   margin: 14,
   pageWidth: 210,
   headerHeight: 60,
-  tableMargin: 65,
+  tableMargin: 80,
   rightAlignX: 155
 };
 
@@ -52,10 +52,10 @@ const TEXTS = {
  * @throws {Error} If validation fails
  */
 function validateParams(params) {
-  const required = ['Numero', 'Fecha', 'Cliente', 'totalFactura', 'cart', 'cantidades', 'subTotal', 'impuesto15', 'totalWords'];
+  const required = ['Numero', 'Fecha', 'Cliente', 'totalFactura', 'cart', 'cantidades', 'subTotal', 'base15', 'isv15', 'base18', 'isv18', 'totalWords', 'condicion', 'formapago'];
 
   for (const field of required) {
-    if (!params[field]) {
+    if (params[field] === undefined || params[field] === null) {
       throw new Error(`Missing required parameter: ${field}`);
     }
   }
@@ -108,6 +108,13 @@ function addHeader(doc, invoiceData) {
 function addClientInfo(doc, clientData) {
   doc.text(`${TEXTS.client}: ${clientData.Cliente}`, LAYOUT.margin, 50);
   doc.text(`RTN del cliente: ${clientData.cantidades.rtnCliente}`, LAYOUT.margin, 55);
+  doc.text(
+    `Condicion: ${clientData.condicion}  |  Forma de pago: ${clientData.formapago || "—"}`,
+    LAYOUT.margin,
+    60
+  );
+  doc.text(`Detalle: ${clientData.detalle || "—"}`, LAYOUT.margin, 65);
+  doc.text(`Observacion: ${clientData.observacion || "—"}`, LAYOUT.margin, 70);
 }
 
 /**
@@ -151,10 +158,10 @@ function addTotalsSection(doc, totals) {
     { label: TEXTS.discountRebates, value: totals.cantidades.cantidadDescuento },
     { label: TEXTS.exoneratedAmount, value: totals.cantidades.cantidadExonerado },
     { label: TEXTS.exemptAmount, value: totals.cantidades.cantidadExento },
-    { label: TEXTS.taxable15, value: totals.subTotal },
-    { label: TEXTS.taxable18, value: 0 },
-    { label: TEXTS.tax15, value: totals.impuesto15 },
-    { label: TEXTS.tax18, value: 0 },
+    { label: TEXTS.taxable15, value: totals.base15 },
+    { label: TEXTS.taxable18, value: totals.base18 },
+    { label: TEXTS.tax15, value: totals.isv15 },
+    { label: TEXTS.tax18, value: totals.isv18 },
     { label: TEXTS.total, value: totals.totalFactura }
   ];
 
@@ -177,8 +184,15 @@ function addTotalsSection(doc, totals) {
  * @param {Array} params.cart - Array of cart items
  * @param {Object} params.cantidades - Tax and discount amounts
  * @param {number} params.subTotal - Subtotal amount
- * @param {number} params.impuesto15 - 15% tax amount
+ * @param {number} params.base15 - 15% taxable amount
+ * @param {number} params.isv15 - 15% tax amount
+ * @param {number} params.base18 - 18% taxable amount
+ * @param {number} params.isv18 - 18% tax amount
  * @param {string} params.totalWords - Total amount in words
+ * @param {string} params.condicion - Payment condition (Contado/Credito)
+ * @param {string} params.formapago - Payment method (Efectivo/Transferencia)
+ * @param {string} params.detalle - Payment detail
+ * @param {string} params.observacion - Invoice observation
  * @param {Object} options - Generation options
  * @param {string} options.fileName - Custom file name (default: factura-{Numero}.pdf)
  * @param {boolean} options.autoDownload - Whether to auto-download (default: true)

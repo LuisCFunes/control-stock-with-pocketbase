@@ -13,6 +13,11 @@ const facturarReducer = (state, action) => {
           ...state,
           Cliente: action.payload,
         };
+      case 'SET_TEXT':
+        return {
+          ...state,
+          [action.payload.identifier]: action.payload.value,
+        };
       case 'CLEAR_CART':
         return {
           ...state,

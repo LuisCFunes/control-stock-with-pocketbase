@@ -1,23 +1,20 @@
+/* eslint-disable react/prop-types */
 import * as XLSX from "xlsx";
-import { pb, accessToken } from "../utilities/pocketbase_route";
+import { pb } from "../utilities/pocketbase_route";
 
 export function ExportButton({ tableName, buttonName, columns }) {
   const handleExport = async () => {
-    pb.collection("Productos").requestOptions = {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    };
-    const data = await pb.collection("Productos").getFullList({
+    const collection = tableName || "Productos";
+    const data = await pb.collection(collection).getFullList({
       sort: "-created",
     });
 
     let formattedData = data;
-    if (tableName === "Facturas") {
+    if (collection === "Facturas") {
       formattedData = data.map((item) => ({
         ...item,
         ProductosV: item.ProductosV
-          ? item.ProductosV.map((Nombre) => Nombre.Nombre).join(", ")
+          ? item.ProductosV.map((prod) => prod.Nombre).join(", ")
           : "",
       }));
     }
@@ -25,7 +22,7 @@ export function ExportButton({ tableName, buttonName, columns }) {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(formattedData, { header: columns });
     XLSX.utils.book_append_sheet(wb, ws, "Datos");
-    XLSX.writeFile(wb, "datos.xlsx");
+    XLSX.writeFile(wb, `datos_${collection}.xlsx`);
   };
 
   return <button onClick={handleExport}>{buttonName}</button>;

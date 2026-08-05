@@ -1,8 +1,66 @@
 import { useState } from "react";
-import { pb, accessToken } from "../utilities/pocketbase_route";
+import { pb } from "../utilities/pocketbase_route";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
+
+const FACTURA_PREFIX = "000-000-00-";
+
+const formatFactura = (num) => `${FACTURA_PREFIX}${num}`;
+
+const fmt = (value) => Number(value || 0);
+
+const buildRows = (records) =>
+  records.map((r) => ({
+    fecha: r.created ? new Date(r.created).toLocaleDateString("en-CA") : "",
+    cliente: r.Cliente || "",
+    factura: formatFactura(r.Numero),
+    condicion: r.condicion || "",
+    formapago: r.formapago || "",
+    detalle: r.detalle || "",
+    exento: fmt(r.exento_amount),
+    exonerado: fmt(r.exonerado_amount),
+    gravado15: fmt(r.subtotal15),
+    isv15: fmt(r.isv15),
+    gravado18: fmt(r.subtotal18),
+    isv18: fmt(r.isv18),
+    total: fmt(r.Total),
+    observacion: r.observacion || "",
+  }));
+
+const TABLE_HEADERS = [
+  "Fecha",
+  "Cliente",
+  "Factura",
+  "Condición",
+  "Forma pago",
+  "Detalle",
+  "Exento",
+  "Exonerado",
+  "Gravado 15%",
+  "ISV 15%",
+  "Gravado 18%",
+  "ISV 18%",
+  "Total",
+  "Observación",
+];
+
+const CSV_HEADERS = {
+  fecha: "Fecha",
+  cliente: "Cliente",
+  factura: "Factura",
+  condicion: "Condición",
+  formapago: "Forma pago",
+  detalle: "Detalle",
+  exento: "Exento",
+  exonerado: "Exonerado",
+  gravado15: "Gravado 15%",
+  isv15: "ISV 15%",
+  gravado18: "Gravado 18%",
+  isv18: "ISV 18%",
+  total: "Total",
+  observacion: "Observación",
+};
 
 export function SalesReport() {
   const [startDate, setStartDate] = useState("");
@@ -10,21 +68,16 @@ export function SalesReport() {
   const [customerFilter, setCustomerFilter] = useState("");
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [generatedAt, setGeneratedAt] = useState(null);
 
   const generateReport = async () => {
     setLoading(true);
     try {
-      pb.collection("Facturas").requestOptions = {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      };
-
       let filter = "";
-      if (startDate) filter += `created >= "${startDate}T00:00:00.000Z"`;
+      if (startDate) filter += `created >= "${new Date(startDate + "T00:00:00").toISOString()}"`;
       if (endDate) {
         if (filter) filter += " && ";
-        filter += `created <= "${endDate}T23:59:59.999Z"`;
+        filter += `created <= "${new Date(endDate + "T23:59:59.999").toISOString()}"`;
       }
       if (customerFilter) {
         if (filter) filter += " && ";
@@ -32,33 +85,26 @@ export function SalesReport() {
       }
 
       const records = await pb.collection("Facturas").getFullList({
-        filter: filter || undefined,
+        ...(filter ? { filter } : {}),
         sort: "-created",
       });
 
-      // Aggregate data
-      const totalSales = records.reduce((sum, r) => sum + r.Total, 0);
-      const numTransactions = records.length;
-      const itemized = records.flatMap(r =>
-        r.ProductosV.map(p => ({
-          invoiceId: r.id,
-          invoiceNumber: r.Numero,
-          date: r.created,
-          customer: r.Cliente,
-          product: p.Nombre,
-          quantity: p.Cantidad,
-          price: p.Precio,
-          total: p.Cantidad * p.Precio,
-          discount: r.discount_amount || 0,
-        }))
-      );
+      const rows = buildRows(records);
 
       setReportData({
-        totalSales,
-        numTransactions,
-        itemized,
-        records,
+        totalSales: rows.reduce((sum, r) => sum + r.total, 0),
+        numTransactions: rows.length,
+        productsSold: records.reduce(
+          (sum, r) =>
+            sum +
+            (Array.isArray(r.ProductosV)
+              ? r.ProductosV.reduce((a, p) => a + (Number(p.Cantidad) || 0), 0)
+              : 0),
+          0
+        ),
+        rows,
       });
+      setGeneratedAt(new Date());
     } catch (error) {
       console.error("Error generating report:", error);
       alert("Error al generar el reporte");
@@ -69,17 +115,13 @@ export function SalesReport() {
 
   const exportCSV = () => {
     if (!reportData) return;
-    const data = reportData.itemized.map(item => ({
-      "Factura ID": item.invoiceId,
-      "Número": item.invoiceNumber,
-      "Fecha": item.date,
-      "Cliente": item.customer,
-      "Producto": item.product,
-      "Cantidad": item.quantity,
-      "Precio": item.price,
-      "Total": item.total,
-      "Descuento": item.discount,
-    }));
+    const data = reportData.rows.map((r) => {
+      const out = {};
+      Object.keys(CSV_HEADERS).forEach((key) => {
+        out[CSV_HEADERS[key]] = r[key];
+      });
+      return out;
+    });
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Reporte de Ventas");
@@ -88,128 +130,243 @@ export function SalesReport() {
 
   const exportPDF = () => {
     if (!reportData) return;
-    const doc = new jsPDF();
-    doc.text("Reporte de Ventas", 20, 10);
-    doc.text(`Fecha: ${startDate} - ${endDate}`, 20, 20);
-    doc.text(`Total Ventas: ${reportData.totalSales}`, 20, 30);
-    doc.text(`Número de Transacciones: ${reportData.numTransactions}`, 20, 40);
+    const doc = new jsPDF({ orientation: "landscape" });
+    doc.text("Reporte de Ventas", 14, 10);
+    doc.text(
+      `Generado el: ${generatedAt ? generatedAt.toLocaleString("es-HN") : ""}`,
+      280,
+      10,
+      { align: "right" }
+    );
+    doc.text(`Período: ${startDate || "inicio"} - ${endDate || "hoy"}`, 14, 20);
+    doc.text(`Total Ventas: ${reportData.totalSales.toFixed(2)}`, 14, 30);
+    doc.text(`Número de Transacciones: ${reportData.numTransactions}`, 14, 40);
 
-    const tableData = reportData.itemized.map(item => [
-      item.invoiceNumber,
-      item.date.split('T')[0],
-      item.customer,
-      item.product,
-      item.quantity,
-      item.price,
-      item.total,
+    const tableData = reportData.rows.map((r) => [
+      r.fecha,
+      r.cliente,
+      r.factura,
+      r.condicion,
+      r.formapago,
+      r.detalle,
+      r.exento,
+      r.exonerado,
+      r.gravado15,
+      r.isv15,
+      r.gravado18,
+      r.isv18,
+      r.total,
+      r.observacion,
     ]);
 
     doc.autoTable({
-      head: [['Factura', 'Fecha', 'Cliente', 'Producto', 'Cant.', 'Precio', 'Total']],
+      head: [TABLE_HEADERS],
       body: tableData,
       startY: 50,
+      styles: { fontSize: 7 },
+      headStyles: { fillColor: [31, 23, 23], textColor: "white" },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        1: { cellWidth: 35 },
+        2: { cellWidth: 30 },
+        3: { cellWidth: 18 },
+        4: { cellWidth: 20 },
+        5: { cellWidth: 25 },
+        6: { cellWidth: 16 },
+        7: { cellWidth: 18 },
+        8: { cellWidth: 18 },
+        9: { cellWidth: 15 },
+        10: { cellWidth: 18 },
+        11: { cellWidth: 15 },
+        12: { cellWidth: 18 },
+        13: { cellWidth: 30 },
+      },
     });
 
     doc.save("reporte_ventas.pdf");
   };
 
   return (
-    <div className="container mt-4">
-      <h3>Reporte de Ventas</h3>
-      <div className="row mb-3">
-        <div className="col-md-3">
-          <label>Fecha Inicio:</label>
-          <input
-            type="date"
-            className="form-control"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-          />
-        </div>
-        <div className="col-md-3">
-          <label>Fecha Fin:</label>
-          <input
-            type="date"
-            className="form-control"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-          />
-        </div>
-        <div className="col-md-3">
-          <label>Cliente:</label>
-          <input
-            type="text"
-            className="form-control"
-            placeholder="Filtrar por cliente"
-            value={customerFilter}
-            onChange={(e) => setCustomerFilter(e.target.value)}
-          />
+    <div className="app-card">
+      <div className="card-header">
+        <h5>
+          <i className="bi bi-funnel me-2 text-primary"></i>
+          Filtros del reporte
+        </h5>
+      </div>
+      <div className="card-body">
+        <div className="row g-3">
+          <div className="col-md-3">
+            <label htmlFor="startDate" className="form-label">
+              Fecha inicio
+            </label>
+            <input
+              type="date"
+              id="startDate"
+              className="form-control"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
+          </div>
+          <div className="col-md-3">
+            <label htmlFor="endDate" className="form-label">
+              Fecha fin
+            </label>
+            <input
+              type="date"
+              id="endDate"
+              className="form-control"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
+          </div>
+          <div className="col-md-3">
+            <label htmlFor="customerFilter" className="form-label">
+              Cliente
+            </label>
+            <input
+              type="text"
+              id="customerFilter"
+              className="form-control"
+              placeholder="Filtrar por cliente"
+              value={customerFilter}
+              onChange={(e) => setCustomerFilter(e.target.value)}
+            />
+          </div>
+          <div className="col-md-3 d-flex align-items-end">
+            <button className="btn btn-app btn-primary-custom w-100" onClick={generateReport} disabled={loading}>
+              <i className="bi bi-search"></i>
+              {loading ? "Generando..." : "Generar reporte"}
+            </button>
+          </div>
         </div>
       </div>
-      <button className="btn btn-primary mb-3" onClick={generateReport} disabled={loading}>
-        {loading ? "Generando..." : "Generar Reporte"}
-      </button>
 
-      {reportData && (
+      {!reportData && !loading && (
+        <div className="card-body border-top">
+          <div className="empty-state">
+            <i className="bi bi-graph-up-arrow"></i>
+            <h5>Aún no hay reporte</h5>
+            <p>Configura los filtros y haz clic en Generar reporte.</p>
+          </div>
+        </div>
+      )}
+
+      {loading && (
+        <div className="card-body border-top">
+          <div className="empty-state">
+            <div className="spinner-border text-primary" role="status"></div>
+            <p className="mt-2">Consultando las ventas...</p>
+          </div>
+        </div>
+      )}
+
+      {reportData && !loading && (
         <>
-          <div className="row mb-3">
-            <div className="col-md-4">
-              <div className="card">
-                <div className="card-body">
-                  <h5>Total Ventas</h5>
-                  <p className="h4">{reportData.totalSales.toFixed(2)}</p>
+          <div className="card-body border-top">
+            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+              <span className="text-muted small">
+                <i className="bi bi-calendar-check me-1"></i>
+                Reporte generado el:{" "}
+                <strong>
+                  {generatedAt ? generatedAt.toLocaleString("es-HN") : ""}
+                </strong>
+              </span>
+              <span className="text-muted small">
+                Período: {startDate || "inicio"} — {endDate || "hoy"}
+              </span>
+            </div>
+            <div className="row g-3">
+              <div className="col-md-4">
+                <div className="stat-card">
+                  <div className="stat-icon green">
+                    <i className="bi bi-cash-stack"></i>
+                  </div>
+                  <div>
+                    <div className="stat-label">Total ventas</div>
+                    <div className="stat-value">L. {reportData.totalSales.toFixed(2)}</div>
+                  </div>
+                </div>
+              </div>
+              <div className="col-md-4">
+                <div className="stat-card">
+                  <div className="stat-icon indigo">
+                    <i className="bi bi-receipt"></i>
+                  </div>
+                  <div>
+                    <div className="stat-label">Transacciones</div>
+                    <div className="stat-value">{reportData.numTransactions}</div>
+                  </div>
+                </div>
+              </div>
+              <div className="col-md-4">
+                <div className="stat-card">
+                  <div className="stat-icon cyan">
+                    <i className="bi bi-box-seam"></i>
+                  </div>
+                  <div>
+                    <div className="stat-label">Productos vendidos</div>
+                    <div className="stat-value">{reportData.productsSold}</div>
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="col-md-4">
-              <div className="card">
-                <div className="card-body">
-                  <h5>Número de Transacciones</h5>
-                  <p className="h4">{reportData.numTransactions}</p>
-                </div>
-              </div>
-            </div>
-            <div className="col-md-4">
-              <div className="card">
-                <div className="card-body">
-                  <h5>Productos Vendidos</h5>
-                  <p className="h4">{reportData.itemized.length}</p>
-                </div>
-              </div>
+
+            <div className="d-flex gap-2 mt-3">
+              <button className="btn btn-outline-success" onClick={exportCSV}>
+                <i className="bi bi-filetype-csv me-1"></i>
+                Exportar CSV
+              </button>
+              <button className="btn btn-outline-danger" onClick={exportPDF}>
+                <i className="bi bi-file-earmark-pdf me-1"></i>
+                Exportar PDF
+              </button>
             </div>
           </div>
 
-          <div className="mb-3">
-            <button className="btn btn-success me-2" onClick={exportCSV}>Exportar CSV</button>
-            <button className="btn btn-danger" onClick={exportPDF}>Exportar PDF</button>
+          <div className="card-body p-0 border-top">
+            <div className="table-responsive">
+              <table className="table-app">
+                <thead>
+                  <tr>
+                    {TABLE_HEADERS.map((h) => (
+                      <th key={h}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportData.rows.length === 0 && (
+                    <tr>
+                      <td colSpan={TABLE_HEADERS.length}>
+                        <div className="empty-state">
+                          <i className="bi bi-inbox"></i>
+                          <p className="mb-0">No hay ventas en el período seleccionado.</p>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {reportData.rows.map((r, index) => (
+                    <tr key={index}>
+                      <td>{r.fecha}</td>
+                      <td>{r.cliente}</td>
+                      <td>{r.factura}</td>
+                      <td>{r.condicion}</td>
+                      <td>{r.formapago}</td>
+                      <td>{r.detalle}</td>
+                      <td>{r.exento}</td>
+                      <td>{r.exonerado}</td>
+                      <td>{r.gravado15}</td>
+                      <td>{r.isv15}</td>
+                      <td>{r.gravado18}</td>
+                      <td>{r.isv18}</td>
+                      <td>{r.total}</td>
+                      <td>{r.observacion}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-
-          <table className="table table-striped">
-            <thead>
-              <tr>
-                <th>Factura</th>
-                <th>Fecha</th>
-                <th>Cliente</th>
-                <th>Producto</th>
-                <th>Cantidad</th>
-                <th>Precio</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reportData.itemized.map((item, index) => (
-                <tr key={index}>
-                  <td>{item.invoiceNumber}</td>
-                  <td>{item.date.split('T')[0]}</td>
-                  <td>{item.customer}</td>
-                  <td>{item.product}</td>
-                  <td>{item.quantity}</td>
-                  <td>{item.price}</td>
-                  <td>{item.total}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </>
       )}
     </div>

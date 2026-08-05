@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
-import { pb, accessToken } from "../utilities/pocketbase_route";
+import { pb } from "../utilities/pocketbase_route";
 
 export const useUpdateData = () => {
   const [errorMessage, setErrorMessage] = useState("");
@@ -24,12 +24,7 @@ export const useUpdateData = () => {
     }
 
     try {
-      pb.collection("Productos").requestOptions = {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      };
-      const record = await pb.collection("Productos").update(datos.id, datos);
+      await pb.collection("Productos").update(datos.id, datos);
       withReactContent(Swal).fire({
         title: <p>Actualización exitosa!</p>,
         html: `<i>El Nombre ${datos.Nombre} fue actualizado con éxito</i>`,

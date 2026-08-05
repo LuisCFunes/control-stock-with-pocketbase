@@ -23,7 +23,7 @@ export function CheckBoxText({ tipo, onTextoChange }) {
   const inputId = `checkbox-${tipo.replace(/\s+/g, '-').toLowerCase()}`;
 
   return (
-    <div className="mb-3">
+    <div className="mb-3 checkbox-toggle">
       <div className="form-check">
         <input
           type="checkbox"

@@ -1,14 +1,8 @@
-import { pb, accessToken } from "../utilities/pocketbase_route";
+import { pb } from "../utilities/pocketbase_route";
 
 export const useUpdate = () => {
   const updateQuantity = async (id, nuevaCantidad, tabla) => {
     try {
-      pb.collection(tabla).requestOptions = {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      };
-
       const record = await pb.collection(tabla).getOne(id);
 
       const CantidadOriginal = record.Cantidad;

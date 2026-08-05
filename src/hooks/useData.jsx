@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { pb, accessToken } from "../utilities/pocketbase_route";
+import { pb } from "../utilities/pocketbase_route";
 
 export const useData = () => {
   const [listProducts, setListProducts] = useState([]);
@@ -11,16 +11,10 @@ export const useData = () => {
   const fetchAndSetList = useCallback(async () => {
     setLoading(true);
     try {
-      pb.collection("Productos").requestOptions = {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      };
-
-      const records = await pb.collection("Productos").getList(1, 20, {
+      const records = await pb.collection("Productos").getFullList({
         sort: "-created",
       });
-      setListProducts(records.items);
+      setListProducts(records);
     } catch (err) {
       console.error("Error fetching data:", err);
       setError(err.message);

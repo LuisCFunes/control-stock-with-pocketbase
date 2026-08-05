@@ -8,8 +8,13 @@ const useFacturarState = () => {
       cantidadExonerado: 0,
       cantidadExento: 0,
       rtnCliente: 0,
+      cantidadGravado18: 0,
     },
     Cliente: "Cliente Ordinario",
+    condicion: "Contado",
+    formapago: "Efectivo",
+    detalle: "",
+    observacion: "",
   };
 
   const [state, dispatch] = useReducer(facturarReducer, initialState);
@@ -22,7 +27,31 @@ const useFacturarState = () => {
     dispatch({ type: "SET_CANTIDAD", payload: { identifier, value } });
   };
 
-  return { state, handleCliente, handleCantidad };
+  const handleCondicion = (value) => {
+    dispatch({ type: "SET_TEXT", payload: { identifier: "condicion", value } });
+  };
+
+  const handleFormapago = (value) => {
+    dispatch({ type: "SET_TEXT", payload: { identifier: "formapago", value } });
+  };
+
+  const handleDetalle = (value) => {
+    dispatch({ type: "SET_TEXT", payload: { identifier: "detalle", value } });
+  };
+
+  const handleObservacion = (value) => {
+    dispatch({ type: "SET_TEXT", payload: { identifier: "observacion", value } });
+  };
+
+  return {
+    state,
+    handleCliente,
+    handleCantidad,
+    handleCondicion,
+    handleFormapago,
+    handleDetalle,
+    handleObservacion,
+  };
 };
 
 export default useFacturarState;
