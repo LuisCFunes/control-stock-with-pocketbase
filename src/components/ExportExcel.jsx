@@ -1,6 +1,6 @@
 /* eslint-disable react/prop-types */
-import * as XLSX from "xlsx";
 import { pb } from "../utilities/pocketbase_route";
+import { exportStyledExcel } from "../utilities/excelHelper";
 
 export function ExportButton({ tableName, buttonName, columns }) {
   const handleExport = async () => {
@@ -19,10 +19,22 @@ export function ExportButton({ tableName, buttonName, columns }) {
       }));
     }
 
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(formattedData, { header: columns });
-    XLSX.utils.book_append_sheet(wb, ws, "Datos");
-    XLSX.writeFile(wb, `datos_${collection}.xlsx`);
+    const cols =
+      columns && columns.length > 0
+        ? columns.map((col) =>
+            typeof col === "string" ? { key: col, header: col } : col
+          )
+        : Object.keys(formattedData[0] || {}).map((key) => ({
+            key,
+            header: key,
+          }));
+
+    exportStyledExcel({
+      fileName: `datos_${collection}.xlsx`,
+      sheetName: collection,
+      columns: cols,
+      data: formattedData,
+    });
   };
 
   return <button onClick={handleExport}>{buttonName}</button>;

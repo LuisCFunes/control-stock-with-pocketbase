@@ -6,7 +6,7 @@ export const useSendData = () => {
       Numero,
       Cliente,
       Total,
-      Tabla,
+      Tabla = "Facturas",
       ProductosV,
       Estado,
       discount_amount,
@@ -20,6 +20,11 @@ export const useSendData = () => {
       isv15,
       subtotal18,
       isv18,
+      estado_pago,
+      saldo_pendiente,
+      dias_credito,
+      fecha_vencimiento,
+      abonos,
     } = datos;
 
     if (!ProductosV || ProductosV.length === 0) {
@@ -45,13 +50,24 @@ export const useSendData = () => {
         isv15,
         subtotal18,
         isv18,
+        estado_pago: estado_pago || (condicion === "Credito" ? "Pendiente" : "Pagada"),
+        saldo_pendiente:
+          saldo_pendiente !== undefined
+            ? saldo_pendiente
+            : condicion === "Credito"
+              ? Total
+              : 0,
+        dias_credito: dias_credito || 0,
+        fecha_vencimiento: fecha_vencimiento || "",
+        abonos: abonos || [],
       });
       console.log(records.created);
       console.log("Se envió correctamente");
+      return records;
     } catch (error) {
       console.error("Error de envío", error);
       console.log(datos);
-      return;
+      throw error;
     }
   }
 

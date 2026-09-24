@@ -25,7 +25,10 @@ export const useData = () => {
 
   useEffect(() => {
     fetchAndSetList();
+    const handleProductsUpdated = () => fetchAndSetList();
+    window.addEventListener("products_updated", handleProductsUpdated);
+    return () => window.removeEventListener("products_updated", handleProductsUpdated);
   }, [fetchAndSetList]);
 
-  return { listProducts, error, loading };
+  return { listProducts, error, loading, reload: fetchAndSetList };
 };

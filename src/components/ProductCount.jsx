@@ -7,14 +7,15 @@ export function ProductCount({ id, Nombre, Precio }) {
   const { listProducts } = useData();
   const { AddCart } = useContext(CartContext);
   const [CantidadV, setCantidadV] = useState(0);
+  const [tipoImpuesto, setTipoImpuesto] = useState("15");
 
   const product = listProducts.find((prod) => prod.id === id);
 
   const SentToCart = () => {
     if (product && CantidadV > 0 && CantidadV <= product.Cantidad) {
-      AddCart(id, Nombre, +CantidadV, Precio);
-      alert("Se envió los datos al carrito");
+      AddCart(id, Nombre, +CantidadV, Precio, tipoImpuesto);
       setCantidadV(0);
+      setTipoImpuesto("15");
     } else if (CantidadV <= 0) {
       alert("Ingrese una cantidad mayor a cero.");
     } else {
@@ -36,7 +37,7 @@ export function ProductCount({ id, Nombre, Precio }) {
           </div>
           {Nombre && (
             <div className="text-end">
-              <div className="small text-muted">Precio</div>
+              <div className="small text-muted">Precio de venta</div>
               <div className="fw-bold text-primary">
                 L. {Number(Precio || 0).toLocaleString("es-HN", { minimumFractionDigits: 2 })}
               </div>
@@ -61,6 +62,60 @@ export function ProductCount({ id, Nombre, Precio }) {
             Agregar
           </button>
         </div>
+        {Nombre && (
+          <div className="d-flex align-items-center gap-2 mt-2">
+            <span className="small text-muted">ISV:</span>
+            <div className="btn-group btn-group-sm" role="group">
+              <input
+                type="radio"
+                className="btn-check"
+                name="taxOptionCount"
+                id="tax15"
+                checked={tipoImpuesto === "15"}
+                onChange={() => setTipoImpuesto("15")}
+              />
+              <label className="btn btn-outline-secondary btn-sm py-0 px-2" htmlFor="tax15">
+                15%
+              </label>
+
+              <input
+                type="radio"
+                className="btn-check"
+                name="taxOptionCount"
+                id="tax18"
+                checked={tipoImpuesto === "18"}
+                onChange={() => setTipoImpuesto("18")}
+              />
+              <label className="btn btn-outline-secondary btn-sm py-0 px-2" htmlFor="tax18">
+                18%
+              </label>
+
+              <input
+                type="radio"
+                className="btn-check"
+                name="taxOptionCount"
+                id="taxExento"
+                checked={tipoImpuesto === "exento"}
+                onChange={() => setTipoImpuesto("exento")}
+              />
+              <label className="btn btn-outline-success btn-sm py-0 px-2" htmlFor="taxExento">
+                Exento
+              </label>
+
+              <input
+                type="radio"
+                className="btn-check"
+                name="taxOptionCount"
+                id="taxExonerado"
+                checked={tipoImpuesto === "exonerado"}
+                onChange={() => setTipoImpuesto("exonerado")}
+              />
+              <label className="btn btn-outline-primary btn-sm py-0 px-2" htmlFor="taxExonerado">
+                Exonerado
+              </label>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

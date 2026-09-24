@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { pb } from "../utilities/pocketbase_route";
-import * as XLSX from "xlsx";
+import { exportStyledExcel } from "../utilities/excelHelper";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 
@@ -10,9 +10,27 @@ const formatFactura = (num) => `${FACTURA_PREFIX}${num}`;
 
 const fmt = (value) => Number(value || 0);
 
+const formatDateDMY = (val) => {
+  if (!val) return "";
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) return trimmed;
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (isoMatch) {
+      return `${isoMatch[3].padStart(2, "0")}/${isoMatch[2].padStart(2, "0")}/${isoMatch[1]}`;
+    }
+  }
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return String(val);
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
 const buildRows = (records) =>
   records.map((r) => ({
-    fecha: r.created ? new Date(r.created).toLocaleDateString("en-CA") : "",
+    fecha: r.created ? formatDateDMY(r.created) : "",
     cliente: r.Cliente || "",
     factura: formatFactura(r.Numero),
     condicion: r.condicion || "",
@@ -45,22 +63,22 @@ const TABLE_HEADERS = [
   "Observación",
 ];
 
-const CSV_HEADERS = {
-  fecha: "Fecha",
-  cliente: "Cliente",
-  factura: "Factura",
-  condicion: "Condición",
-  formapago: "Forma pago",
-  detalle: "Detalle",
-  exento: "Exento",
-  exonerado: "Exonerado",
-  gravado15: "Gravado 15%",
-  isv15: "ISV 15%",
-  gravado18: "Gravado 18%",
-  isv18: "ISV 18%",
-  total: "Total",
-  observacion: "Observación",
-};
+const EXCEL_COLUMNS = [
+  { key: "fecha", header: "Fecha", align: "center", width: 14 },
+  { key: "cliente", header: "Cliente", align: "left", width: 28 },
+  { key: "factura", header: "Factura", align: "center", width: 20 },
+  { key: "condicion", header: "Condición", align: "center", width: 15 },
+  { key: "formapago", header: "Forma pago", align: "center", width: 16 },
+  { key: "detalle", header: "Detalle", align: "left", width: 30 },
+  { key: "exento", header: "Exento", align: "right", numFmt: "#,##0.00", isTotal: true, width: 15 },
+  { key: "exonerado", header: "Exonerado", align: "right", numFmt: "#,##0.00", isTotal: true, width: 15 },
+  { key: "gravado15", header: "Gravado 15%", align: "right", numFmt: "#,##0.00", isTotal: true, width: 16 },
+  { key: "isv15", header: "ISV 15%", align: "right", numFmt: "#,##0.00", isTotal: true, width: 15 },
+  { key: "gravado18", header: "Gravado 18%", align: "right", numFmt: "#,##0.00", isTotal: true, width: 16 },
+  { key: "isv18", header: "ISV 18%", align: "right", numFmt: "#,##0.00", isTotal: true, width: 15 },
+  { key: "total", header: "Total", align: "right", numFmt: "#,##0.00", isTotal: true, width: 16 },
+  { key: "observacion", header: "Observación", align: "left", width: 25 },
+];
 
 export function SalesReport() {
   const [startDate, setStartDate] = useState("");
@@ -113,19 +131,15 @@ export function SalesReport() {
     }
   };
 
-  const exportCSV = () => {
+  const exportExcel = () => {
     if (!reportData) return;
-    const data = reportData.rows.map((r) => {
-      const out = {};
-      Object.keys(CSV_HEADERS).forEach((key) => {
-        out[CSV_HEADERS[key]] = r[key];
-      });
-      return out;
+    exportStyledExcel({
+      fileName: "reporte_ventas.xlsx",
+      sheetName: "Reporte de Ventas",
+      columns: EXCEL_COLUMNS,
+      data: reportData.rows,
+      includeTotals: true,
     });
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Reporte de Ventas");
-    XLSX.writeFile(wb, "reporte_ventas.csv");
   };
 
   const exportPDF = () => {
@@ -138,7 +152,7 @@ export function SalesReport() {
       10,
       { align: "right" }
     );
-    doc.text(`Período: ${startDate || "inicio"} - ${endDate || "hoy"}`, 14, 20);
+    doc.text(`Período: ${formatDateDMY(startDate) || "inicio"} - ${formatDateDMY(endDate) || "hoy"}`, 14, 20);
     doc.text(`Total Ventas: ${reportData.totalSales.toFixed(2)}`, 14, 30);
     doc.text(`Número de Transacciones: ${reportData.numTransactions}`, 14, 40);
 
@@ -273,7 +287,7 @@ export function SalesReport() {
                 </strong>
               </span>
               <span className="text-muted small">
-                Período: {startDate || "inicio"} — {endDate || "hoy"}
+                Período: {formatDateDMY(startDate) || "inicio"} — {formatDateDMY(endDate) || "hoy"}
               </span>
             </div>
             <div className="row g-3">
@@ -313,9 +327,9 @@ export function SalesReport() {
             </div>
 
             <div className="d-flex gap-2 mt-3">
-              <button className="btn btn-outline-success" onClick={exportCSV}>
-                <i className="bi bi-filetype-csv me-1"></i>
-                Exportar CSV
+              <button className="btn btn-outline-success" onClick={exportExcel}>
+                <i className="bi bi-file-earmark-excel me-1"></i>
+                Exportar Excel
               </button>
               <button className="btn btn-outline-danger" onClick={exportPDF}>
                 <i className="bi bi-file-earmark-pdf me-1"></i>

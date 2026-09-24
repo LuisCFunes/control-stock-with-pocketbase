@@ -10,11 +10,12 @@ const useFacturarState = () => {
       rtnCliente: 0,
       cantidadGravado18: 0,
     },
-    Cliente: "Cliente Ordinario",
+    Cliente: "Consumidor Final",
     condicion: "Contado",
     formapago: "Efectivo",
     detalle: "",
     observacion: "",
+    diasCredito: 30,
   };
 
   const [state, dispatch] = useReducer(facturarReducer, initialState);
@@ -43,6 +44,10 @@ const useFacturarState = () => {
     dispatch({ type: "SET_TEXT", payload: { identifier: "observacion", value } });
   };
 
+  const handleDiasCredito = (value) => {
+    dispatch({ type: "SET_TEXT", payload: { identifier: "diasCredito", value } });
+  };
+
   return {
     state,
     handleCliente,
@@ -51,6 +56,7 @@ const useFacturarState = () => {
     handleFormapago,
     handleDetalle,
     handleObservacion,
+    handleDiasCredito,
   };
 };
 

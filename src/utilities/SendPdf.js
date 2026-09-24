@@ -9,8 +9,36 @@ const COMPANY_CONFIG = {
   cai: "9ACDC8-FC347E-7B43B8-7790B8-3E2429-99",
   address: "San Pedro Sula, Carretera El Carmen",
   caiRange: "001-002-01-00062371 al 001-002-01-00072370",
-  emissionLimit: "2023-12-15"
+  emissionLimit: "15/12/2023"
 };
+
+/**
+ * Formats a date into Honduran DD/MM/YYYY format
+ * @param {string|Date} dateInput
+ * @returns {string}
+ */
+function formatDateDMY(dateInput) {
+  if (!dateInput || dateInput === "—") return "—";
+  if (typeof dateInput === "string") {
+    const trimmed = dateInput.trim();
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
+      return trimmed;
+    }
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (isoMatch) {
+      const y = isoMatch[1];
+      const m = isoMatch[2].padStart(2, "0");
+      const d = isoMatch[3].padStart(2, "0");
+      return `${d}/${m}/${y}`;
+    }
+  }
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return String(dateInput);
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+}
 
 const LAYOUT = {
   margin: 14,
@@ -22,6 +50,7 @@ const LAYOUT = {
 
 const STYLES = {
   headerFontSize: 24,
+  subHeaderFontSize: 10.8, // 20% más grande que la información de abajo (9 * 1.2)
   normalFontSize: 12,
   smallFontSize: 9,
   primaryColor: [31, 23, 23], // RGB for header
@@ -85,9 +114,7 @@ function addHeader(doc, invoiceData) {
   doc.setFontSize(STYLES.headerFontSize);
   doc.text(COMPANY_CONFIG.name, LAYOUT.margin, 17);
 
-  doc.setFontSize(16);
-  doc.text(COMPANY_CONFIG.shortName, 85, 25);
-
+  doc.setFontSize(STYLES.subHeaderFontSize);
   doc.text(`${TEXTS.invoice} 000-000-00-${invoiceData.Numero}`, LAYOUT.margin, 33);
   doc.text(COMPANY_CONFIG.address, 100, 33);
 
@@ -95,51 +122,89 @@ function addHeader(doc, invoiceData) {
   doc.text(`RTN: ${COMPANY_CONFIG.rtn}`, LAYOUT.margin, 40);
   doc.text(`CAI: ${COMPANY_CONFIG.cai}`, LAYOUT.margin, 45);
   doc.text(TEXTS.original, 100, 40);
-  doc.text(`${TEXTS.issuedDate}: ${invoiceData.Fecha}`, 100, 45);
+  doc.text(`${TEXTS.issuedDate}: ${formatDateDMY(invoiceData.Fecha)}`, 100, 45);
   doc.text(`${TEXTS.authorizedRange}: ${COMPANY_CONFIG.caiRange}`, 100, 50);
-  doc.text(`${TEXTS.emissionLimit}: ${COMPANY_CONFIG.emissionLimit}`, 100, 55);
+  doc.text(`${TEXTS.emissionLimit}: ${formatDateDMY(COMPANY_CONFIG.emissionLimit)}`, 100, 55);
 }
 
 /**
  * Adds client information to the PDF
  * @param {jsPDF} doc - PDF document
  * @param {Object} clientData - Client data
+ * @returns {number} The Y position where client info ended
  */
 function addClientInfo(doc, clientData) {
-  doc.text(`${TEXTS.client}: ${clientData.Cliente}`, LAYOUT.margin, 50);
-  doc.text(`RTN del cliente: ${clientData.cantidades.rtnCliente}`, LAYOUT.margin, 55);
-  doc.text(
-    `Condicion: ${clientData.condicion}  |  Forma de pago: ${clientData.formapago || "—"}`,
-    LAYOUT.margin,
-    60
-  );
-  doc.text(`Detalle: ${clientData.detalle || "—"}`, LAYOUT.margin, 65);
-  doc.text(`Observacion: ${clientData.observacion || "—"}`, LAYOUT.margin, 70);
+  let currentY = 50;
+  doc.text(`${TEXTS.client}: ${clientData.Cliente}`, LAYOUT.margin, currentY);
+
+  currentY += 5;
+  doc.text(`RTN del cliente: ${clientData.cantidades?.rtnCliente || "—"}`, LAYOUT.margin, currentY);
+
+  currentY += 5;
+  if (clientData.condicion === "Credito") {
+    doc.text(
+      `Condicion: Credito (${clientData.dias_credito || 30} dias)  |  Vence: ${formatDateDMY(clientData.fecha_vencimiento)}`,
+      LAYOUT.margin,
+      currentY
+    );
+  } else {
+    doc.text(
+      `Condicion: ${clientData.condicion}  |  Forma de pago: ${clientData.formapago || "—"}`,
+      LAYOUT.margin,
+      currentY
+    );
+  }
+
+  const detalle = (clientData.detalle || "").trim();
+  if (detalle && detalle !== "—") {
+    currentY += 5;
+    doc.text(`Detalle: ${detalle}`, LAYOUT.margin, currentY);
+  }
+
+  const observacion = (clientData.observacion || "").trim();
+  if (observacion && observacion !== "—") {
+    currentY += 5;
+    doc.text(`Observacion: ${observacion}`, LAYOUT.margin, currentY);
+  }
+
+  return currentY;
 }
 
 /**
  * Adds the items table to the PDF
  * @param {jsPDF} doc - PDF document
  * @param {Array} cart - Cart items
+ * @param {number} [startY] - Vertical starting position
  */
-function addItemsTable(doc, cart) {
+function addItemsTable(doc, cart, startY = LAYOUT.tableMargin) {
   const columns = ["Producto", "Cantidad", "Precio", "Total"];
 
   doc.autoTable({
     head: [columns],
-    body: cart.map((item) => [
-      item.Nombre,
-      item.Cantidad,
-      item.Precio,
-      `${(item.Precio * item.Cantidad).toFixed(2)} ${STYLES.currency}`,
-    ]),
+    body: cart.map((item) => {
+      let suffix = "";
+      if (item.tipoImpuesto === "exonerado" || item.exonerado) {
+        suffix = " (EX)";
+      } else if (item.tipoImpuesto === "exento" || item.exento) {
+        suffix = " (E)";
+      } else if (item.tipoImpuesto === "18") {
+        suffix = " (18%)";
+      }
+      return [
+        `${item.Nombre}${suffix}`,
+        item.Cantidad,
+        Number(item.Precio || 0).toFixed(2),
+        `${(Number(item.Precio || 0) * Number(item.Cantidad || 0)).toFixed(2)} Lps.`,
+      ];
+    }),
     theme: "plain",
     headStyles: {
       fillColor: STYLES.primaryColor,
       textColor: "white",
       fontSize: STYLES.normalFontSize
     },
-    margin: { top: LAYOUT.tableMargin },
+    startY: startY,
+    margin: { top: startY },
     tableWidth: "auto",
     styles: { fontSize: STYLES.smallFontSize }
   });
@@ -153,6 +218,11 @@ function addItemsTable(doc, cart) {
 function addTotalsSection(doc, totals) {
   const startY = doc.autoTable.previous.finalY + 10;
   doc.setFontSize(STYLES.normalFontSize);
+
+  const formatAmount = (val) => {
+    const num = Number(val) || 0;
+    return num.toFixed(2);
+  };
 
   const lines = [
     { label: TEXTS.discountRebates, value: totals.cantidades.cantidadDescuento },
@@ -168,7 +238,7 @@ function addTotalsSection(doc, totals) {
   lines.forEach((line, index) => {
     const y = startY + (index * 7);
     doc.text(`${line.label}:`, LAYOUT.margin, y);
-    doc.text(`${line.value} ${STYLES.currency}.`, LAYOUT.rightAlignX, y);
+    doc.text(`${formatAmount(line.value)}`, LAYOUT.rightAlignX, y);
   });
 
   doc.text(`${TEXTS.amount}: ${totals.totalWords}`, LAYOUT.margin, startY + (lines.length * 7) + 6);
@@ -208,6 +278,8 @@ export default function sendPdf(params, options = {}) {
     const {
       fileName = `factura-${params.Numero}.pdf`,
       autoDownload = true,
+      autoOpen = true,
+      targetWindow = null,
       returnBlob = false
     } = options;
 
@@ -216,13 +288,24 @@ export default function sendPdf(params, options = {}) {
 
     // Add sections
     addHeader(doc, params);
-    addClientInfo(doc, params);
-    addItemsTable(doc, params.cart);
+    const clientInfoEndY = addClientInfo(doc, params);
+    const tableStartY = Math.max(clientInfoEndY + 8, 68);
+    addItemsTable(doc, params.cart, tableStartY);
     addTotalsSection(doc, params);
 
     // Handle output options
     if (returnBlob) {
       return doc.output('blob');
+    }
+
+    if (autoOpen) {
+      const blob = doc.output('blob');
+      const blobUrl = URL.createObjectURL(blob);
+      if (targetWindow && !targetWindow.closed) {
+        targetWindow.location.href = blobUrl;
+      } else {
+        window.open(blobUrl, '_blank');
+      }
     }
 
     if (autoDownload) {
