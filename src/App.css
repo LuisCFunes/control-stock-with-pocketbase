@@ -300,6 +300,15 @@ body {
   background: #f8fafc;
 }
 
+.table-app tfoot td {
+  padding: 12px 16px;
+  font-size: 13px;
+  background: #f8fafc;
+  border-top: 2px solid var(--app-border);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
 /* ---------- Badges ---------- */
 .badge-stock {
   display: inline-flex;

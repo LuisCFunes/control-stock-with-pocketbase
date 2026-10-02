@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { pb } from "../utilities/pocketbase_route";
+import { clientService } from "../services";
 import Swal from "sweetalert2";
 
 export const useClientes = () => {
@@ -10,9 +10,7 @@ export const useClientes = () => {
   const fetchClientes = useCallback(async () => {
     setLoading(true);
     try {
-      const records = await pb.collection("Clientes").getFullList({
-        sort: "Nombre",
-      });
+      const records = await clientService.getClients({ sort: "Nombre" });
       setClientes(records);
       setError(null);
     } catch (err) {
@@ -23,16 +21,9 @@ export const useClientes = () => {
     }
   }, []);
 
-  const addCliente = async ({ Nombre, RTN, Contacto, Telefono, Direccion, Email }) => {
+  const addCliente = async (clienteData) => {
     try {
-      const record = await pb.collection("Clientes").create({
-        Nombre: Nombre.trim(),
-        RTN: RTN ? RTN.trim() : "",
-        Contacto: Contacto ? Contacto.trim() : "",
-        Telefono: Telefono ? Telefono.trim() : "",
-        Direccion: Direccion ? Direccion.trim() : "",
-        Email: Email ? Email.trim() : "",
-      });
+      const record = await clientService.createClient(clienteData);
 
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("clientes_updated"));
@@ -60,7 +51,7 @@ export const useClientes = () => {
 
   const updateCliente = async (id, data) => {
     try {
-      const updated = await pb.collection("Clientes").update(id, data);
+      const updated = await clientService.updateClient(id, data);
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("clientes_updated"));
       }
@@ -74,7 +65,7 @@ export const useClientes = () => {
 
   const deleteCliente = async (id) => {
     try {
-      await pb.collection("Clientes").delete(id);
+      await clientService.deleteClient(id);
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("clientes_updated"));
       }
@@ -86,10 +77,52 @@ export const useClientes = () => {
   };
 
   useEffect(() => {
+    let isMounted = true;
+    let unsubscribeFn = null;
+
     fetchClientes();
+
+    const handleRealtime = (e) => {
+      if (!isMounted) return;
+      if (e.action === "create") {
+        setClientes((prev) => {
+          const next = [e.record, ...prev.filter((c) => c.id !== e.record.id)];
+          return next.sort((a, b) => (a.Nombre || "").localeCompare(b.Nombre || ""));
+        });
+      } else if (e.action === "update") {
+        setClientes((prev) =>
+          prev.map((c) => (c.id === e.record.id ? e.record : c))
+        );
+      } else if (e.action === "delete") {
+        setClientes((prev) => prev.filter((c) => c.id !== e.record.id));
+      }
+    };
+
+    clientService
+      .subscribe(handleRealtime)
+      .then((unsub) => {
+        if (!isMounted) {
+          unsub();
+        } else {
+          unsubscribeFn = unsub;
+        }
+      })
+      .catch((err) => {
+        console.warn("PocketBase realtime error on Clientes:", err);
+      });
+
     const handleUpdate = () => fetchClientes();
     window.addEventListener("clientes_updated", handleUpdate);
-    return () => window.removeEventListener("clientes_updated", handleUpdate);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener("clientes_updated", handleUpdate);
+      if (unsubscribeFn) {
+        unsubscribeFn();
+      } else {
+        clientService.unsubscribe(handleRealtime).catch(() => {});
+      }
+    };
   }, [fetchClientes]);
 
   return {

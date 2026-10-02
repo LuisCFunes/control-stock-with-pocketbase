@@ -93,6 +93,7 @@ export default function Vender() {
               id={infoProduct.id}
               Nombre={infoProduct.Nombre}
               Precio={infoProduct.Precio}
+              listProducts={listProducts}
             />
 
             <ProductFilters

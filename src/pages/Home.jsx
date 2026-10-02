@@ -5,7 +5,7 @@ import { ListProducts, ProductFilters, CategorySelect } from "../components";
 import { useData } from "../hooks/useData";
 import { useProductFilter } from "../hooks/useProductFilter";
 import { useDeleteProduct } from "../hooks/useDeleteProduct";
-import { pb } from "../utilities/pocketbase_route";
+import { productService } from "../services";
 
 export default function Home() {
   const { deleteProduct } = useDeleteProduct();
@@ -60,7 +60,7 @@ export default function Home() {
         Precio: precioVenta,
         Categoria: chosenCategory.trim(),
       };
-      await pb.collection("Productos").create(payload);
+      await productService.createProduct(payload);
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("products_updated"));
       }

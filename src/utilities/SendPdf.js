@@ -140,14 +140,8 @@ function addClientInfo(doc, clientData) {
   currentY += 5;
   doc.text(`RTN del cliente: ${clientData.cantidades?.rtnCliente || "—"}`, LAYOUT.margin, currentY);
 
-  currentY += 5;
-  if (clientData.condicion === "Credito") {
-    doc.text(
-      `Condicion: Credito (${clientData.dias_credito || 30} dias)  |  Vence: ${formatDateDMY(clientData.fecha_vencimiento)}`,
-      LAYOUT.margin,
-      currentY
-    );
-  } else {
+  if (clientData.condicion !== "Credito") {
+    currentY += 5;
     doc.text(
       `Condicion: ${clientData.condicion}  |  Forma de pago: ${clientData.formapago || "—"}`,
       LAYOUT.margin,
@@ -277,7 +271,7 @@ export default function sendPdf(params, options = {}) {
 
     const {
       fileName = `factura-${params.Numero}.pdf`,
-      autoDownload = true,
+      autoDownload = false,
       autoOpen = true,
       targetWindow = null,
       returnBlob = false

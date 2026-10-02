@@ -1,11 +1,8 @@
-import { useState } from "react";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
-import { pb } from "../utilities/pocketbase_route";
+import { productService } from "../services";
 
 export const useUpdateData = () => {
-  const [errorMessage, setErrorMessage] = useState("");
-
   const updateData = async (infoProduct, limpiarInput) => {
     const pVenta = Number(infoProduct.Precio_Venta ?? infoProduct.Precio ?? 0);
     const pCompra = Number(infoProduct.Precio_Compra ?? 0);
@@ -20,16 +17,24 @@ export const useUpdateData = () => {
     };
 
     if (datos.Nombre === "" && datos.Cantidad === 0 && datos.Precio_Venta === 0) {
-      setErrorMessage("Llena el formulario");
+      Swal.fire({
+        icon: "warning",
+        title: "Formulario incompleto",
+        text: "Llena el formulario",
+      });
       return;
     }
     if (datos.Cantidad < 0 || datos.Precio_Venta < 0 || datos.Precio_Compra < 0) {
-      setErrorMessage("No ingrese Cantidad o Precios menores a cero");
+      Swal.fire({
+        icon: "warning",
+        title: "Valores inválidos",
+        text: "No ingrese Cantidad o Precios menores a cero",
+      });
       return;
     }
 
     try {
-      await pb.collection("Productos").update(datos.id, datos);
+      await productService.updateProduct(datos.id, datos);
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("products_updated"));
       }
@@ -40,12 +45,11 @@ export const useUpdateData = () => {
       });
       limpiarInput();
     } catch (error) {
-      setErrorMessage("No se logró actualizar el Nombre");
       Swal.fire({
         icon: "error",
         title: "Oops...",
-        text: errorMessage,
-        footer: JSON.parse(JSON.stringify(error)).message,
+        text: "No se logró actualizar el producto",
+        footer: error?.message || String(error),
       });
     }
   };

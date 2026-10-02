@@ -1,21 +1,13 @@
-import { pb } from "../utilities/pocketbase_route";
+import { productService } from "../services";
 
 export const useUpdate = () => {
-  const updateQuantity = async (id, nuevaCantidad, tabla) => {
+  const updateQuantity = async (id, nuevaCantidad) => {
     try {
-      const record = await pb.collection(tabla).getOne(id);
-
-      const CantidadOriginal = record.Cantidad;
-      const CantidadFinal = CantidadOriginal - nuevaCantidad;
-
-      const data = {
-        Cantidad: CantidadFinal,
-      };
-
-      const update = await pb.collection(tabla).update(id, data);
-      console.log("Producto actualizado:", update);
+      const update = await productService.decrementStock(id, nuevaCantidad);
+      return update;
     } catch (error) {
-      console.error("Error inesperado:", error.message);
+      console.error("Error al actualizar inventario:", error.message);
+      throw error;
     }
   };
 

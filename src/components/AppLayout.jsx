@@ -15,7 +15,7 @@ const PAGE_META = {
   "/Editar": { title: "Editar Artículos", subtitle: "Actualiza la información del inventario" },
   "/Clientes": { title: "Clientes", subtitle: "Administra el directorio de clientes para facturación" },
   "/Creditos": { title: "Cuentas por Cobrar", subtitle: "Control de facturas al crédito, saldos pendientes y registro de abonos" },
-  "/Reports": { title: "Reporte de Ventas", subtitle: "Consulta y exporta el historial de ventas" },
+  "/Reports": { title: "Reportes", subtitle: "Consulta y exporta reportes de ventas y cuentas por cobrar" },
 };
 
 export default function AppLayout() {

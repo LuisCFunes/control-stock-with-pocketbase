@@ -1,10 +1,7 @@
 /* eslint-disable react/prop-types */
 import { useState, useContext } from "react";
 import { CartContext } from "../context/CartContext";
-import { useData } from "../hooks/useData";
-
-export function ProductCount({ id, Nombre, Precio }) {
-  const { listProducts } = useData();
+export function ProductCount({ id, Nombre, Precio, listProducts = [] }) {
   const { AddCart } = useContext(CartContext);
   const [CantidadV, setCantidadV] = useState(0);
   const [tipoImpuesto, setTipoImpuesto] = useState("15");

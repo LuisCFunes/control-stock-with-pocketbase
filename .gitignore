@@ -29,3 +29,7 @@ dist-ssr
 *.sw?
 
 .eslintrc.json
+
+# Local agent & tooling state
+.codegraph
+.atl

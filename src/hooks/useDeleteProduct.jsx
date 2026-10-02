@@ -1,6 +1,6 @@
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
-import { pb } from "../utilities/pocketbase_route";
+import { productService } from "../services";
 
 export const useDeleteProduct = () => {
   const deleteProduct = async (product, onDeleted) => {
@@ -28,7 +28,7 @@ export const useDeleteProduct = () => {
       });
 
       try {
-        await pb.collection("Productos").delete(product.id);
+        await productService.deleteProduct(product.id);
 
         if (typeof window !== "undefined") {
           window.dispatchEvent(new Event("products_updated"));

@@ -52,20 +52,6 @@ function App() {
     );
   };
 
-  const toggleExento = (id) => {
-    setCart((prevCart) =>
-      prevCart.map((prod) => {
-        if (prod.id !== id) return prod;
-        const nuevoTipo = prod.tipoImpuesto === "exento" ? "15" : "exento";
-        return {
-          ...prod,
-          tipoImpuesto: nuevoTipo,
-          exento: nuevoTipo === "exento",
-        };
-      })
-    );
-  };
-
   const removeFromCart = (id) => {
     setCart((prevCart) => prevCart.filter((prod) => prod.id !== id));
   };
@@ -81,7 +67,6 @@ function App() {
         AddCart,
         setCart,
         clearCart,
-        toggleExento,
         setProductTax,
         removeFromCart,
       }}

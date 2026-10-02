@@ -1,13 +1,18 @@
 import PocketBase from "pocketbase";
 
 export const pb = new PocketBase(import.meta.env.VITE_APP_PB_URL);
+pb.autoCancellation(false);
 
 export const initAuth = async () => {
+  if (pb.authStore.isValid) {
+    return;
+  }
+
   const mail = import.meta.env.VITE_APP_MAIL;
   const password = import.meta.env.VITE_APP_PASSWORD;
 
   if (mail && password) {
-    await pb.admins.authWithPassword(mail, password);
+    await pb.collection("users").authWithPassword(mail, password);
     return;
   }
 

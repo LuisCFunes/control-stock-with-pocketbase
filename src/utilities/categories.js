@@ -1,15 +1,17 @@
-import { pb } from "./pocketbase_route";
+import { productService } from "../services";
 
-export const DEFAULT_CATEGORIES = [
-  "General",
-  "Abarrotes",
-  "Bebidas",
-  "Snacks",
-  "Lácteos",
-  "Limpieza",
-  "Cuidado Personal",
-  "Golosinas",
-];
+export const DEFAULT_CATEGORIES = ["General"];
+
+const OLD_SUPERMARKET_DEFAULTS = new Set([
+  "abarrotes",
+  "bebidas",
+  "snacks",
+  "lácteos",
+  "lacteos",
+  "limpieza",
+  "cuidado personal",
+  "golosinas",
+]);
 
 export const getDeletedCategories = () => {
   try {
@@ -24,7 +26,17 @@ export const getDeletedCategories = () => {
 export const getSavedCustomCategories = () => {
   try {
     const saved = localStorage.getItem("app_custom_categories");
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return [];
+    const list = JSON.parse(saved);
+    const cleaned = Array.isArray(list)
+      ? list.filter(
+          (c) => typeof c === "string" && !OLD_SUPERMARKET_DEFAULTS.has(c.toLowerCase().trim())
+        )
+      : [];
+    if (Array.isArray(list) && cleaned.length !== list.length) {
+      localStorage.setItem("app_custom_categories", JSON.stringify(cleaned));
+    }
+    return cleaned;
   } catch (err) {
     console.error("Error al leer categorías personalizadas:", err);
     return [];
@@ -113,7 +125,7 @@ export const deleteCategoryWithProducts = async (categoryName, products = []) =>
   if (affected.length > 0) {
     for (const prod of affected) {
       try {
-        await pb.collection("Productos").update(prod.id, { Categoria: "General" });
+        await productService.updateProduct(prod.id, { Categoria: "General" });
         updatedCount++;
       } catch (err) {
         console.error(`Error al reasignar categoría para producto ${prod.id}:`, err);

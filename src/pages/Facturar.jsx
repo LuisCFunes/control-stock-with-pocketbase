@@ -9,7 +9,7 @@ const money = (value) =>
   `L. ${Number(value || 0).toLocaleString("es-HN", { minimumFractionDigits: 2 })}`;
 
 export default function Facturar({ facturarState: externalFacturarState }) {
-  const { cart, toggleExento, setProductTax, removeFromCart } = useContext(CartContext);
+  const { cart, setProductTax, removeFromCart } = useContext(CartContext);
   const internalFacturarState = useFacturarState();
   const facturarState = externalFacturarState || internalFacturarState;
 
@@ -20,7 +20,6 @@ export default function Facturar({ facturarState: externalFacturarState }) {
     handleFormapago,
     handleDetalle,
     handleObservacion,
-    handleDiasCredito,
   } = facturarState;
 
   const { handleClick, totalFactura, totalWords, breakdown } =
@@ -165,39 +164,15 @@ export default function Facturar({ facturarState: externalFacturarState }) {
             {state.condicion === "Credito" && (
               <div className="col-12">
                 <div className="p-3 bg-light border rounded">
-                  <div className="row g-2 align-items-center">
-                    <div className="col-12 col-sm-6">
-                      <label className="form-label small fw-bold text-dark mb-1">
-                        <i className="bi bi-calendar-range me-1 text-primary"></i>
-                        Plazo del Crédito
-                      </label>
-                      <select
-                        className="form-select form-select-sm"
-                        value={state.diasCredito || 30}
-                        onChange={(e) => handleDiasCredito && handleDiasCredito(e.target.value)}
-                      >
-                        <option value="15">15 días</option>
-                        <option value="30">30 días (1 mes)</option>
-                        <option value="45">45 días</option>
-                        <option value="60">60 días (2 meses)</option>
-                        <option value="90">90 días (3 meses)</option>
-                      </select>
-                    </div>
-                    <div className="col-12 col-sm-6">
-                      <div className="small text-muted mb-1">Fecha de vencimiento:</div>
-                      <div className="fw-semibold small text-primary">
-                        <i className="bi bi-calendar-check me-1"></i>
-                        {(() => {
-                          const d = new Date();
-                          d.setDate(d.getDate() + (Number(state.diasCredito) || 30));
-                          const day = String(d.getDate()).padStart(2, "0");
-                          const month = String(d.getMonth() + 1).padStart(2, "0");
-                          const year = d.getFullYear();
-                          return `${day}/${month}/${year}`;
-                        })()}
-                      </div>
-                    </div>
+                  <div className="d-flex align-items-center mb-1">
+                    <i className="bi bi-info-circle-fill text-primary me-2"></i>
+                    <span className="fw-semibold small text-dark">
+                      Venta al Crédito
+                    </span>
                   </div>
+                  <p className="text-muted small mb-0" style={{ fontSize: "12.5px" }}>
+                    Esta venta se registrará como cuenta por cobrar. La antigüedad se contabilizará automáticamente a partir de la emisión (30, 60, 90 y +90 días).
+                  </p>
                   {state.Cliente === "Consumidor Final" && (
                     <div className="text-warning-emphasis small mt-2 d-flex align-items-center" style={{ fontSize: "12px" }}>
                       <i className="bi bi-exclamation-triangle-fill text-warning me-1"></i>

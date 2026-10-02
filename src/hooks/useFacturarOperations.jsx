@@ -1,18 +1,10 @@
 import { useSendData, useUpdate } from "../hooks";
 import { useContext } from "react";
 import { CartContext } from "../context/CartContext";
-import { pb } from "../utilities/pocketbase_route";
-import { FechaEmitida, SubTotal, Impuesto15, ISV18, Base15, Total } from "../utilities/FacturaResultados";
+import { invoiceService } from "../services";
+import { FechaEmitida, SubTotal, Impuesto15, ISV18, Total } from "../utilities/FacturaResultados";
 import SendPdf from "../utilities/SendPdf";
 import NumberToWords from "../utilities/Number-to-Words";
-
-const getNextNumero = async () => {
-  const records = await pb.collection("Facturas").getList(1, 1, {
-    sort: "-Numero",
-  });
-  const lastNumero = records.items[0]?.Numero || 0;
-  return lastNumero + 1;
-};
 
 const useFacturarOperations = (state) => {
   const { cart, clearCart } = useContext(CartContext);
@@ -101,7 +93,7 @@ const useFacturarOperations = (state) => {
       },
       {
         autoOpen: true,
-        autoDownload: true,
+        autoDownload: false,
         targetWindow,
       }
     );
@@ -145,11 +137,15 @@ const useFacturarOperations = (state) => {
     }
 
     try {
-      const Numero = await getNextNumero();
+      const Numero = await invoiceService.getNextInvoiceNumber();
       Facturar(Numero, pdfWindow);
       await putData({
         Numero,
         Cliente: state.Cliente,
+        RTN:
+          state.cantidades?.rtnCliente && state.cantidades.rtnCliente !== 0
+            ? String(state.cantidades.rtnCliente).trim()
+            : "",
         Total: totalFactura,
         Tabla: "Facturas",
         ProductosV: cart,

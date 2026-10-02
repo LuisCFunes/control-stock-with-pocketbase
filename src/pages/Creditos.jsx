@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { pb } from "../utilities/pocketbase_route";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { invoiceService } from "../services";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
 import jsPDF from "jspdf";
@@ -32,17 +32,19 @@ export default function Creditos() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("pendientes"); // "todas", "pendientes", "vencidas", "pagadas"
+  const [selectedClient, setSelectedClient] = useState("todos");
 
   const fetchCreditos = useCallback(async () => {
     setLoading(true);
     try {
       // Obtenemos facturas a crédito
-      const records = await pb.collection("Facturas").getFullList({
+      const records = await invoiceService.getInvoices({
         filter: 'condicion = "Credito"',
         sort: "-Numero",
       });
       setFacturas(records);
     } catch (err) {
+      if (err?.isAbort) return;
       console.error("Error al cargar créditos:", err);
     } finally {
       setLoading(false);
@@ -53,74 +55,142 @@ export default function Creditos() {
     fetchCreditos();
   }, [fetchCreditos]);
 
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-
   // Normalizar datos de cada factura
-  const normalizedList = facturas.map((f) => {
-    const total = Number(f.Total || 0);
-    const abonos = Array.isArray(f.abonos) ? f.abonos : [];
-    const totalAbonado = abonos.reduce((sum, a) => sum + Number(a.monto || 0), 0);
+  const normalizedList = useMemo(() => {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
 
-    // Saldo pendiente: si está definido en el registro se usa, sino total - totalAbonado
-    const saldoPendiente =
-      f.saldo_pendiente !== undefined && f.saldo_pendiente !== null
-        ? Number(f.saldo_pendiente)
-        : Math.max(total - totalAbonado, 0);
+    return facturas.map((f) => {
+      const total = Number(f.Total || 0);
+      const abonos = Array.isArray(f.abonos) ? f.abonos : [];
+      const totalAbonado = abonos.reduce((sum, a) => sum + Number(a.monto || 0), 0);
 
-    let fechaVenc = null;
-    let esVencida = false;
-    let diasRestantes = null;
+      // Saldo pendiente
+      const saldoPendiente =
+        f.saldo_pendiente !== undefined && f.saldo_pendiente !== null
+          ? Number(f.saldo_pendiente)
+          : Math.max(total - totalAbonado, 0);
 
-    if (f.fecha_vencimiento) {
-      fechaVenc = new Date(f.fecha_vencimiento + "T00:00:00");
-    } else if (f.created) {
-      // Si no tiene fecha_vencimiento explícita, calculamos 30 días desde created
-      fechaVenc = new Date(f.created);
-      fechaVenc.setDate(fechaVenc.getDate() + (Number(f.dias_credito) || 30));
-    }
+      // Días transcurridos a partir de la emisión (f.fecha_emision o f.created)
+      let rawDate = f.fecha_emision || f.created;
+      let fechaEmision = rawDate ? new Date(rawDate) : new Date();
+      if (isNaN(fechaEmision.getTime())) {
+        fechaEmision = new Date();
+      }
+      const fechaEmisionSinHora = new Date(fechaEmision);
+      fechaEmisionSinHora.setHours(0, 0, 0, 0);
 
-    if (fechaVenc && saldoPendiente > 0) {
-      const diffTime = fechaVenc.getTime() - hoy.getTime();
-      diasRestantes = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      esVencida = diasRestantes < 0;
-    }
+      const diffMs = hoy.getTime() - fechaEmisionSinHora.getTime();
+      const diasTranscurridos = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
 
-    let estado = f.estado_pago || (saldoPendiente === 0 ? "Pagada" : totalAbonado > 0 ? "Abonado" : "Pendiente");
+      // Determinar en qué tramo de antigüedad se ubica el saldo:
+      // 30: 0 a 30 días
+      // 60: 31 a 60 días
+      // 90: 61 a 90 días
+      // mas90: > 90 días
+      let tramo = "30";
+      if (diasTranscurridos > 90) {
+        tramo = "mas90";
+      } else if (diasTranscurridos > 60) {
+        tramo = "90";
+      } else if (diasTranscurridos > 30) {
+        tramo = "60";
+      } else {
+        tramo = "30";
+      }
 
-    return {
-      ...f,
-      total,
-      totalAbonado,
-      saldoPendiente,
-      abonos,
-      fechaVenc,
-      esVencida,
-      diasRestantes,
-      estado,
-    };
-  });
+      // El monto del saldo pendiente se coloca únicamente en la columna de su tramo correspondiente
+      const saldo30 = saldoPendiente > 0 && tramo === "30" ? saldoPendiente : 0;
+      const saldo60 = saldoPendiente > 0 && tramo === "60" ? saldoPendiente : 0;
+      const saldo90 = saldoPendiente > 0 && tramo === "90" ? saldoPendiente : 0;
+      const saldoMas90 = saldoPendiente > 0 && tramo === "mas90" ? saldoPendiente : 0;
+
+      let estado = f.estado_pago || (saldoPendiente <= 0 ? "Pagada" : totalAbonado > 0 ? "Abonado" : "Pendiente");
+
+      return {
+        ...f,
+        total,
+        totalAbonado,
+        saldoPendiente,
+        abonos,
+        fechaEmision,
+        diasTranscurridos,
+        tramo,
+        saldo30,
+        saldo60,
+        saldo90,
+        saldoMas90,
+        estado,
+      };
+    });
+  }, [facturas]);
+
+  // Lista única de clientes para el filtro
+  const clientesList = useMemo(() => {
+    return Array.from(
+      new Set(normalizedList.map((f) => f.Cliente?.trim()).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
+  }, [normalizedList]);
+
+  // Lista base según el cliente seleccionado (o todos)
+  const clientFilteredList = useMemo(() => {
+    return selectedClient === "todos"
+      ? normalizedList
+      : normalizedList.filter((f) => f.Cliente?.trim() === selectedClient);
+  }, [normalizedList, selectedClient]);
 
   // Métricas
-  const totalPorCobrar = normalizedList.reduce((sum, f) => sum + f.saldoPendiente, 0);
-  const totalCobrado = normalizedList.reduce((sum, f) => sum + f.totalAbonado, 0);
-  const facturasPendientesCount = normalizedList.filter((f) => f.saldoPendiente > 0).length;
-  const facturasVencidasCount = normalizedList.filter((f) => f.esVencida).length;
+  const totalPorCobrar = clientFilteredList.reduce((sum, f) => sum + f.saldoPendiente, 0);
+  const totalCobrado = clientFilteredList.reduce((sum, f) => sum + f.totalAbonado, 0);
+  const facturasPendientesCount = clientFilteredList.filter((f) => f.saldoPendiente > 0).length;
 
-  // Filtrado
-  const filteredFacturas = normalizedList.filter((f) => {
+  const total30 = clientFilteredList.reduce((sum, f) => sum + f.saldo30, 0);
+  const total60 = clientFilteredList.reduce((sum, f) => sum + f.saldo60, 0);
+  const total90 = clientFilteredList.reduce((sum, f) => sum + f.saldo90, 0);
+  const totalMas90 = clientFilteredList.reduce((sum, f) => sum + f.saldoMas90, 0);
+  const count30 = clientFilteredList.filter((f) => f.saldo30 > 0).length;
+  const count60 = clientFilteredList.filter((f) => f.saldo60 > 0).length;
+  const count90 = clientFilteredList.filter((f) => f.saldo90 > 0).length;
+  const countMas90 = clientFilteredList.filter((f) => f.saldoMas90 > 0).length;
+
+  // Filtrado final
+  const filteredFacturas = clientFilteredList.filter((f) => {
     const term = searchTerm.toLowerCase();
     const matchesSearch =
       (f.Cliente && f.Cliente.toLowerCase().includes(term)) ||
       (f.Numero && String(f.Numero).includes(term)) ||
-      (f.detalle && f.detalle.toLowerCase().includes(term));
+      (f.detalle && f.detalle.toLowerCase().includes(term)) ||
+      (f.observacion && f.observacion.toLowerCase().includes(term));
 
     if (!matchesSearch) return false;
 
     if (filterStatus === "pendientes") return f.saldoPendiente > 0;
-    if (filterStatus === "vencidas") return f.esVencida;
-    if (filterStatus === "pagadas") return f.saldoPendiente === 0;
+    if (filterStatus === "30") return f.saldo30 > 0;
+    if (filterStatus === "60") return f.saldo60 > 0;
+    if (filterStatus === "90") return f.saldo90 > 0;
+    if (filterStatus === "mas90") return f.saldoMas90 > 0;
+    if (filterStatus === "pagadas") return f.saldoPendiente <= 0;
     return true; // "todas"
+  });
+
+  // Ordenamiento de arriba hacia abajo por número de factura (+Numero) o antigüedad (+created)
+  const sortedFacturas = [...filteredFacturas].sort((a, b) => {
+    const numA = Number(a.Numero);
+    const numB = Number(b.Numero);
+    const hasNumA = !isNaN(numA) && numA > 0;
+    const hasNumB = !isNaN(numB) && numB > 0;
+
+    if (hasNumA && hasNumB) {
+      if (numA !== numB) return numA - numB;
+    } else if (hasNumA) {
+      return -1;
+    } else if (hasNumB) {
+      return 1;
+    }
+
+    const dateA = new Date(a.fecha_emision || a.created).getTime() || 0;
+    const dateB = new Date(b.fecha_emision || b.created).getTime() || 0;
+    return dateA - dateB;
   });
 
   // Registrar un abono
@@ -204,24 +274,8 @@ export default function Creditos() {
 
     if (formValues) {
       try {
-        const nuevoAbono = {
-          id: `abn_${Date.now()}`,
-          fecha: new Date().toISOString(),
-          monto: formValues.monto,
-          formapago: formValues.formapago,
-          referencia: formValues.referencia,
-          nota: formValues.nota,
-        };
-
-        const nuevosAbonos = [...factura.abonos, nuevoAbono];
-        const nuevoSaldo = Math.max(saldoMax - formValues.monto, 0);
-        const nuevoEstado = nuevoSaldo <= 0.009 ? "Pagada" : "Abonado";
-
-        await pb.collection("Facturas").update(factura.id, {
-          abonos: nuevosAbonos,
-          saldo_pendiente: Math.round(nuevoSaldo * 100) / 100,
-          estado_pago: nuevoEstado,
-        });
+        const { newPayment: nuevoAbono, newBalance: nuevoSaldo } =
+          await invoiceService.recordPayment(factura, formValues);
 
         MySwal.fire({
           icon: "success",
@@ -372,45 +426,57 @@ export default function Creditos() {
       <div className="row g-3 mb-4">
         <div className="col-6 col-md-3">
           <div className="stat-card">
-            <div className="stat-icon red">
+            <div className="stat-icon indigo">
               <i className="bi bi-wallet2"></i>
             </div>
             <div>
               <div className="stat-label">Total por cobrar</div>
               <div className="stat-value">{money(totalPorCobrar)}</div>
-            </div>
-          </div>
-        </div>
-        <div className="col-6 col-md-3">
-          <div className="stat-card">
-            <div className="stat-icon amber">
-              <i className="bi bi-hourglass-split"></i>
-            </div>
-            <div>
-              <div className="stat-label">Facturas pendientes</div>
-              <div className="stat-value">{facturasPendientesCount}</div>
-            </div>
-          </div>
-        </div>
-        <div className="col-6 col-md-3">
-          <div className="stat-card">
-            <div className="stat-icon red">
-              <i className="bi bi-calendar-x"></i>
-            </div>
-            <div>
-              <div className="stat-label">Facturas vencidas</div>
-              <div className="stat-value text-danger">{facturasVencidasCount}</div>
+              <div className="small text-muted mt-1" style={{ fontSize: "11px" }}>
+                {facturasPendientesCount} {facturasPendientesCount === 1 ? "factura pendiente" : "facturas pendientes"}
+              </div>
             </div>
           </div>
         </div>
         <div className="col-6 col-md-3">
           <div className="stat-card">
             <div className="stat-icon green">
-              <i className="bi bi-check-circle"></i>
+              <i className="bi bi-calendar-check"></i>
             </div>
             <div>
-              <div className="stat-label">Total recuperado</div>
-              <div className="stat-value text-success">{money(totalCobrado)}</div>
+              <div className="stat-label">Hasta 30 días</div>
+              <div className="stat-value text-success">{money(total30)}</div>
+              <div className="small text-muted mt-1" style={{ fontSize: "11px" }}>
+                {count30} {count30 === 1 ? "factura al día" : "facturas al día"}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="col-6 col-md-3">
+          <div className="stat-card">
+            <div className="stat-icon amber">
+              <i className="bi bi-clock-history"></i>
+            </div>
+            <div>
+              <div className="stat-label">31 a 90 días</div>
+              <div className="stat-value text-warning-emphasis">{money(total60 + total90)}</div>
+              <div className="small text-muted mt-1" style={{ fontSize: "11px" }}>
+                60d: {money(total60)} | 90d: {money(total90)}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="col-6 col-md-3">
+          <div className="stat-card">
+            <div className="stat-icon red">
+              <i className="bi bi-exclamation-octagon"></i>
+            </div>
+            <div>
+              <div className="stat-label">Más de 90 días</div>
+              <div className="stat-value text-danger">{money(totalMas90)}</div>
+              <div className="small text-danger mt-1" style={{ fontSize: "11px" }}>
+                {countMas90} {countMas90 === 1 ? "factura crítica" : "facturas críticas"}
+              </div>
             </div>
           </div>
         </div>
@@ -421,9 +487,12 @@ export default function Creditos() {
         <div className="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
           <h5>
             <i className="bi bi-journal-text me-2 text-primary"></i>
-            Cuentas por Cobrar (Facturas al Crédito)
+            Cuentas por Cobrar
           </h5>
-          <div className="d-flex gap-2">
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <span className="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 small">
+              <i className="bi bi-check-circle me-1"></i> Recuperado: {money(totalCobrado)}
+            </span>
             <button
               type="button"
               className="btn btn-outline-secondary btn-sm"
@@ -438,7 +507,7 @@ export default function Creditos() {
         <div className="card-body">
           {/* Barra de Filtros y Búsqueda */}
           <div className="row g-3 mb-3">
-            <div className="col-12 col-md-6">
+            <div className="col-12 col-md-3">
               <div className="input-group">
                 <span className="input-group-text bg-white text-muted">
                   <i className="bi bi-search"></i>
@@ -462,6 +531,36 @@ export default function Creditos() {
               </div>
             </div>
 
+            <div className="col-12 col-md-3">
+              <div className="input-group">
+                <span className="input-group-text bg-white text-muted">
+                  <i className="bi bi-person"></i>
+                </span>
+                <select
+                  className="form-select"
+                  value={selectedClient}
+                  onChange={(e) => setSelectedClient(e.target.value)}
+                >
+                  <option value="todos">Todos los clientes ({clientesList.length})</option>
+                  {clientesList.map((cli) => (
+                    <option key={cli} value={cli}>
+                      {cli}
+                    </option>
+                  ))}
+                </select>
+                {selectedClient !== "todos" && (
+                  <button
+                    className="btn btn-outline-secondary"
+                    type="button"
+                    onClick={() => setSelectedClient("todos")}
+                    title="Ver todos los clientes"
+                  >
+                    <i className="bi bi-x-lg"></i>
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div className="col-12 col-md-6 d-flex gap-1 justify-content-md-end flex-wrap">
               <button
                 type="button"
@@ -472,24 +571,45 @@ export default function Creditos() {
               </button>
               <button
                 type="button"
-                className={`btn btn-sm ${filterStatus === "vencidas" ? "btn-danger" : "btn-outline-secondary"}`}
-                onClick={() => setFilterStatus("vencidas")}
+                className={`btn btn-sm ${filterStatus === "30" ? "btn-success" : "btn-outline-secondary"}`}
+                onClick={() => setFilterStatus("30")}
               >
-                Vencidas ({facturasVencidasCount})
+                30 días ({count30})
               </button>
               <button
                 type="button"
-                className={`btn btn-sm ${filterStatus === "pagadas" ? "btn-success" : "btn-outline-secondary"}`}
+                className={`btn btn-sm ${filterStatus === "60" ? "btn-warning" : "btn-outline-secondary"}`}
+                onClick={() => setFilterStatus("60")}
+              >
+                60 días ({count60})
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${filterStatus === "90" ? "btn-warning text-dark" : "btn-outline-secondary"}`}
+                onClick={() => setFilterStatus("90")}
+              >
+                90 días ({count90})
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${filterStatus === "mas90" ? "btn-danger" : "btn-outline-secondary"}`}
+                onClick={() => setFilterStatus("mas90")}
+              >
+                +90 días ({countMas90})
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${filterStatus === "pagadas" ? "btn-outline-success" : "btn-outline-secondary"}`}
                 onClick={() => setFilterStatus("pagadas")}
               >
                 Pagadas
               </button>
               <button
                 type="button"
-                className={`btn btn-sm ${filterStatus === "todas" ? "btn-secondary" : "btn-outline-secondary"}`}
+                className={`btn btn-sm ${filterStatus === "todas" ? "btn-dark" : "btn-outline-secondary"}`}
                 onClick={() => setFilterStatus("todas")}
               >
-                Todas ({normalizedList.length})
+                Todas ({clientFilteredList.length})
               </button>
             </div>
           </div>
@@ -499,13 +619,15 @@ export default function Creditos() {
               <div className="spinner-border text-primary" role="status"></div>
               <p className="mt-2 text-muted">Cargando créditos...</p>
             </div>
-          ) : filteredFacturas.length === 0 ? (
+          ) : sortedFacturas.length === 0 ? (
             <div className="empty-state py-5">
               <i className="bi bi-check-all fs-1 text-success"></i>
               <h5>No hay facturas en este criterio</h5>
               <p className="text-muted small">
                 {searchTerm
                   ? "No se encontraron facturas con ese término de búsqueda."
+                  : selectedClient !== "todos"
+                  ? `No hay facturas registradas o pendientes para el cliente "${selectedClient}" en esta categoría.`
                   : "No hay facturas al crédito registradas o pendientes en esta categoría."}
               </p>
             </div>
@@ -514,10 +636,21 @@ export default function Creditos() {
               <table className="table-app">
                 <thead>
                   <tr className="text-center align-middle">
-                    <th scope="col"># Factura</th>
+                    <th scope="col">No. Factura</th>
                     <th scope="col" className="text-start">Cliente</th>
                     <th scope="col">Emisión</th>
-                    <th scope="col">Vencimiento</th>
+                    <th scope="col" className="text-primary bg-primary-subtle" style={{ minWidth: "105px" }}>
+                      30 días
+                    </th>
+                    <th scope="col" className="text-warning-emphasis bg-warning-subtle" style={{ minWidth: "105px" }}>
+                      60 días
+                    </th>
+                    <th scope="col" className="text-danger-emphasis bg-warning-subtle bg-opacity-75" style={{ minWidth: "105px" }}>
+                      90 días
+                    </th>
+                    <th scope="col" className="text-danger bg-danger-subtle fw-bold" style={{ minWidth: "115px" }}>
+                      +90 días
+                    </th>
                     <th scope="col">Total</th>
                     <th scope="col">Abonado</th>
                     <th scope="col">Saldo Pendiente</th>
@@ -526,7 +659,7 @@ export default function Creditos() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredFacturas.map((fac) => {
+                  {sortedFacturas.map((fac) => {
                     const isPaid = fac.saldoPendiente <= 0;
                     return (
                       <tr key={fac.id} className="text-center align-middle">
@@ -543,35 +676,68 @@ export default function Creditos() {
                           )}
                         </td>
                         <td className="small text-muted">
-                          {fac.created ? formatDateDMY(fac.created) : "—"}
+                          {formatDateDMY(fac.fecha_emision || fac.created)}
+                          <div className="text-muted" style={{ fontSize: "10px" }}>
+                            ({fac.diasTranscurridos} {fac.diasTranscurridos === 1 ? "día" : "días"})
+                          </div>
                         </td>
-                        <td>
-                          {fac.fechaVenc ? (
+
+                        {/* Columna 30 días */}
+                        <td className={fac.saldo30 > 0 ? "bg-primary-subtle bg-opacity-25" : ""}>
+                          {fac.saldo30 > 0 ? (
                             <div>
-                              <div className="small fw-semibold">
-                                {formatDateDMY(fac.fechaVenc)}
+                              <span className="fw-bold text-primary">{money(fac.saldo30)}</span>
+                              <div className="text-muted" style={{ fontSize: "10px" }}>
+                                {fac.diasTranscurridos} {fac.diasTranscurridos === 1 ? "día" : "días"}
                               </div>
-                              {!isPaid && (
-                                <span
-                                  className={`badge ${
-                                    fac.esVencida
-                                      ? "bg-danger"
-                                      : fac.diasRestantes <= 5
-                                      ? "bg-warning text-dark"
-                                      : "bg-light text-dark border"
-                                  } small`}
-                                  style={{ fontSize: "10.5px" }}
-                                >
-                                  {fac.esVencida
-                                    ? `Vencida (${Math.abs(fac.diasRestantes)}d)`
-                                    : `${fac.diasRestantes} días`}
-                                </span>
-                              )}
                             </div>
                           ) : (
-                            <span className="text-muted small">—</span>
+                            <span className="text-muted opacity-50">—</span>
                           )}
                         </td>
+
+                        {/* Columna 60 días */}
+                        <td className={fac.saldo60 > 0 ? "bg-warning-subtle bg-opacity-25" : ""}>
+                          {fac.saldo60 > 0 ? (
+                            <div>
+                              <span className="fw-bold text-warning-emphasis">{money(fac.saldo60)}</span>
+                              <div className="text-muted" style={{ fontSize: "10px" }}>
+                                {fac.diasTranscurridos} días
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-muted opacity-50">—</span>
+                          )}
+                        </td>
+
+                        {/* Columna 90 días */}
+                        <td className={fac.saldo90 > 0 ? "bg-warning-subtle bg-opacity-50" : ""}>
+                          {fac.saldo90 > 0 ? (
+                            <div>
+                              <span className="fw-bold text-danger-emphasis">{money(fac.saldo90)}</span>
+                              <div className="text-muted" style={{ fontSize: "10px" }}>
+                                {fac.diasTranscurridos} días
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-muted opacity-50">—</span>
+                          )}
+                        </td>
+
+                        {/* Columna Más de 90 días */}
+                        <td className={fac.saldoMas90 > 0 ? "bg-danger-subtle bg-opacity-25" : ""}>
+                          {fac.saldoMas90 > 0 ? (
+                            <div>
+                              <span className="fw-bold text-danger">{money(fac.saldoMas90)}</span>
+                              <div className="text-danger fw-semibold" style={{ fontSize: "10px" }}>
+                                {fac.diasTranscurridos} días
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-muted opacity-50">—</span>
+                          )}
+                        </td>
+
                         <td className="fw-semibold">{money(fac.total)}</td>
                         <td className="text-success fw-medium">
                           {fac.totalAbonado > 0 ? money(fac.totalAbonado) : "—"}
@@ -581,7 +747,7 @@ export default function Creditos() {
                             className={
                               isPaid
                                 ? "text-muted"
-                                : fac.esVencida
+                                : fac.diasTranscurridos > 90
                                 ? "text-danger"
                                 : "text-dark"
                             }
@@ -598,13 +764,21 @@ export default function Creditos() {
                             <span className="badge bg-primary-subtle text-primary border border-primary-subtle">
                               <i className="bi bi-pie-chart me-1"></i> Abonado
                             </span>
-                          ) : fac.esVencida ? (
+                          ) : fac.diasTranscurridos > 90 ? (
+                            <span className="badge bg-danger text-white">
+                              <i className="bi bi-exclamation-octagon me-1"></i> +90 días
+                            </span>
+                          ) : fac.diasTranscurridos > 60 ? (
                             <span className="badge bg-danger-subtle text-danger border border-danger-subtle">
-                              <i className="bi bi-exclamation-triangle me-1"></i> Vencida
+                              <i className="bi bi-exclamation-triangle me-1"></i> 61-90 días
+                            </span>
+                          ) : fac.diasTranscurridos > 30 ? (
+                            <span className="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">
+                              <i className="bi bi-clock-history me-1"></i> 31-60 días
                             </span>
                           ) : (
-                            <span className="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">
-                              <i className="bi bi-hourglass me-1"></i> Pendiente
+                            <span className="badge bg-info-subtle text-primary border border-info-subtle">
+                              <i className="bi bi-hourglass me-1"></i> 0-30 días
                             </span>
                           )}
                         </td>
@@ -638,6 +812,35 @@ export default function Creditos() {
                     );
                   })}
                 </tbody>
+                <tfoot className="table-light fw-bold">
+                  <tr className="text-center align-middle border-top">
+                    <td colSpan={3} className="text-end text-muted small pe-2">
+                      TOTALES ({sortedFacturas.length}):
+                    </td>
+                    <td className="text-primary bg-primary-subtle bg-opacity-25">
+                      {money(sortedFacturas.reduce((sum, f) => sum + f.saldo30, 0))}
+                    </td>
+                    <td className="text-warning-emphasis bg-warning-subtle bg-opacity-25">
+                      {money(sortedFacturas.reduce((sum, f) => sum + f.saldo60, 0))}
+                    </td>
+                    <td className="text-danger-emphasis bg-warning-subtle bg-opacity-50">
+                      {money(sortedFacturas.reduce((sum, f) => sum + f.saldo90, 0))}
+                    </td>
+                    <td className="text-danger bg-danger-subtle bg-opacity-25">
+                      {money(sortedFacturas.reduce((sum, f) => sum + f.saldoMas90, 0))}
+                    </td>
+                    <td className="fw-semibold">
+                      {money(sortedFacturas.reduce((sum, f) => sum + f.total, 0))}
+                    </td>
+                    <td className="text-success">
+                      {money(sortedFacturas.reduce((sum, f) => sum + f.totalAbonado, 0))}
+                    </td>
+                    <td className="fw-bold text-dark">
+                      {money(sortedFacturas.reduce((sum, f) => sum + f.saldoPendiente, 0))}
+                    </td>
+                    <td colSpan={2}></td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
