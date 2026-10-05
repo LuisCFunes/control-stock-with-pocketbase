@@ -118,8 +118,26 @@ export const ListProducts = ({
           <tbody>
             {paginatedList.map((product, index) => {
               const category = getCategoryName(product);
+              const isAvailable =
+                btnName === "Editar" || (product.Cantidad && product.Cantidad > 0);
+              const canClickRow = Boolean(handleSendProductData && isAvailable);
+
+              const handleRowClick = (e) => {
+                if (e.target.closest("button") || e.target.closest("a")) {
+                  return;
+                }
+                if (canClickRow) {
+                  handleSendProductData(product);
+                }
+              };
+
               return (
-                <tr className="text-center" key={product.id}>
+                <tr
+                  className={`text-center align-middle ${canClickRow ? "clickable-row" : ""}`}
+                  key={product.id}
+                  onClick={handleRowClick}
+                  title={canClickRow ? `Seleccionar ${product.Nombre}` : undefined}
+                >
                   <td>{startIndex + index + 1}</td>
                   <td className="text-start fw-medium">{product.Nombre}</td>
                   <td>
@@ -141,7 +159,10 @@ export const ListProducts = ({
                           <button
                             type="button"
                             className="btn btn-sm btn-outline-primary"
-                            onClick={() => handleSendProductData(product)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSendProductData(product);
+                            }}
                             disabled={btnName !== "Editar" && (!product.Cantidad || product.Cantidad <= 0)}
                             title={btnName}
                           >
@@ -153,7 +174,10 @@ export const ListProducts = ({
                           <button
                             type="button"
                             className="btn btn-sm btn-outline-danger"
-                            onClick={() => onDeleteProduct(product)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteProduct(product);
+                            }}
                             title={`Eliminar ${product.Nombre}`}
                           >
                             <i className="bi bi-trash3"></i>

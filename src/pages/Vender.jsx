@@ -12,12 +12,8 @@ import useFacturarState from "../hooks/useFacturarState";
 
 export default function Vender() {
   const { listProducts, loading } = useData();
-  const [infoProduct, setInfoProduct] = useState({
-    id: "",
-    Nombre: "",
-    Cantidad: 0,
-    Precio: 0,
-  });
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const facturarState = useFacturarState();
   const { state, handleCliente, handleCantidad } = facturarState;
@@ -45,58 +41,56 @@ export default function Vender() {
         ? Number(data.Precio_Venta)
         : Number(data.Precio || 0);
 
-    setInfoProduct({
-      id: data.id,
-      Nombre: data.Nombre,
-      Cantidad: data.Cantidad,
-      Precio: pVenta,
+    setSelectedProduct({
+      ...data,
+      PrecioVentaEfectivo: pVenta,
     });
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedProduct(null);
   };
 
   return (
-    <div className="row g-4">
-      <div className="col-lg-6">
-        {/* Datos del cliente arriba de selección de productos */}
-        <div className="app-card mb-4">
-          <div className="card-header">
-            <h5>
-              <i className="bi bi-person me-2 text-primary"></i>
-              Datos del cliente
-            </h5>
+    <>
+      <div className="row g-4">
+        <div className="col-lg-6">
+          {/* Datos del cliente arriba de selección de productos */}
+          <div className="app-card mb-4">
+            <div className="card-header">
+              <h5>
+                <i className="bi bi-person me-2 text-primary"></i>
+                Datos del cliente
+              </h5>
+            </div>
+            <div className="card-body">
+              <ClientSelect
+                cliente={state.Cliente}
+                rtn={state.cantidades.rtnCliente}
+                onClienteChange={handleCliente}
+                onRtnChange={handleCantidad}
+              />
+            </div>
           </div>
-          <div className="card-body">
-            <ClientSelect
-              cliente={state.Cliente}
-              rtn={state.cantidades.rtnCliente}
-              onClienteChange={handleCliente}
-              onRtnChange={handleCantidad}
-            />
-          </div>
-        </div>
 
-        {/* Selección de productos */}
-        <div className="app-card">
-          <div className="card-header">
-            <h5>
-              <i className="bi bi-box-seam me-2 text-primary"></i>
-              Selección de productos
-            </h5>
-            <span className="text-muted small">
-              <i className="bi bi-bag me-1"></i>
-              {isInitialState
-                ? `${listProducts.length} en catálogo`
-                : `${filteredProducts.length} encontrados`}
-            </span>
-          </div>
-          <div className="card-body">
-            <ProductCount
-              id={infoProduct.id}
-              Nombre={infoProduct.Nombre}
-              Precio={infoProduct.Precio}
-              listProducts={listProducts}
-            />
-
-            <ProductFilters
+          {/* Selección de productos */}
+          <div className="app-card">
+            <div className="card-header">
+              <h5>
+                <i className="bi bi-box-seam me-2 text-primary"></i>
+                Selección de productos
+              </h5>
+              <span className="text-muted small">
+                <i className="bi bi-bag me-1"></i>
+                {isInitialState
+                  ? `${listProducts.length} en catálogo`
+                  : `${filteredProducts.length} encontrados`}
+              </span>
+            </div>
+            <div className="card-body">
+              <ProductFilters
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
               selectedCategory={selectedCategory}
@@ -127,5 +121,13 @@ export default function Vender() {
         <Facturar facturarState={facturarState} />
       </div>
     </div>
+
+    <ProductCount
+      product={selectedProduct}
+      isOpen={isModalOpen}
+      onClose={handleCloseModal}
+      listProducts={listProducts}
+    />
+  </>
   );
 }

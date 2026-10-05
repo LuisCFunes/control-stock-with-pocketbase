@@ -9,7 +9,14 @@ const money = (value) =>
   `L. ${Number(value || 0).toLocaleString("es-HN", { minimumFractionDigits: 2 })}`;
 
 export default function Facturar({ facturarState: externalFacturarState }) {
-  const { cart, setProductTax, removeFromCart } = useContext(CartContext);
+  const {
+    cart,
+    setProductTax,
+    updateProductPrice,
+    updateProductQuantity,
+    updateProductDescription,
+    removeFromCart,
+  } = useContext(CartContext);
   const internalFacturarState = useFacturarState();
   const facturarState = externalFacturarState || internalFacturarState;
 
@@ -26,6 +33,10 @@ export default function Facturar({ facturarState: externalFacturarState }) {
     useFacturarOperations(state);
 
   const cartTotal = cart.reduce((acc, prod) => acc + prod.Cantidad * prod.Precio, 0);
+
+  const hasCartDescription =
+    cart.some((p) => p.descripcion && p.descripcion.trim()) ||
+    Boolean(state.observacion && state.observacion.trim());
 
   return (
     <>
@@ -51,11 +62,14 @@ export default function Facturar({ facturarState: externalFacturarState }) {
                   <thead>
                     <tr className="text-center">
                       <th scope="col">Producto</th>
-                      <th scope="col">Cant.</th>
-                      <th scope="col">Precio</th>
-                      <th scope="col" style={{ width: "115px" }}>Tasa ISV</th>
+                      {hasCartDescription && (
+                        <th scope="col" style={{ width: "135px" }}>Descripción</th>
+                      )}
+                      <th scope="col" style={{ width: "70px" }}>Cant.</th>
+                      <th scope="col" style={{ width: "110px" }}>Precio</th>
+                      <th scope="col" style={{ width: "105px" }}>Tasa ISV</th>
                       <th scope="col">Total</th>
-                      <th scope="col" style={{ width: "40px" }}></th>
+                      <th scope="col" style={{ width: "35px" }}></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -77,8 +91,62 @@ export default function Facturar({ facturarState: externalFacturarState }) {
                             </span>
                           ) : null}
                         </td>
-                        <td>{prod.Cantidad}</td>
-                        <td>{money(prod.Precio)}</td>
+                        {hasCartDescription && (
+                          <td>
+                            <input
+                              type="text"
+                              className="form-control form-control-sm px-1 py-1"
+                              style={{ fontSize: "12px", minWidth: "110px" }}
+                              placeholder={state.observacion || "Detalle..."}
+                              value={prod.descripcion || ""}
+                              onChange={(e) =>
+                                updateProductDescription &&
+                                updateProductDescription(prod.id, e.target.value)
+                              }
+                              title="Descripción o detalle del producto"
+                            />
+                          </td>
+                        )}
+                        <td>
+                          <input
+                            type="number"
+                            min="1"
+                            className="form-control form-control-sm text-center py-1 px-1 fw-semibold"
+                            style={{ width: "65px", margin: "0 auto", fontSize: "12.5px" }}
+                            value={prod.Cantidad}
+                            onChange={(e) =>
+                              updateProductQuantity &&
+                              updateProductQuantity(prod.id, e.target.value)
+                            }
+                            title="Editar cantidad"
+                          />
+                        </td>
+                        <td>
+                          <div
+                            className="input-group input-group-sm"
+                            style={{ width: "110px", margin: "0 auto" }}
+                          >
+                            <span
+                              className="input-group-text px-1 text-muted"
+                              style={{ fontSize: "11px" }}
+                            >
+                              L.
+                            </span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              className="form-control form-control-sm text-end px-1 py-1 fw-semibold"
+                              style={{ fontSize: "12.5px" }}
+                              value={prod.Precio}
+                              onChange={(e) =>
+                                updateProductPrice &&
+                                updateProductPrice(prod.id, e.target.value)
+                              }
+                              title="Editar precio para esta factura"
+                            />
+                          </div>
+                        </td>
                         <td>
                           <select
                             className="form-select form-select-sm py-1 px-2 text-center"
@@ -196,7 +264,7 @@ export default function Facturar({ facturarState: externalFacturarState }) {
               />
             </div>
             <div className="col-12 col-md-6">
-              <label className="form-label">Observación (OP)</label>
+              <label className="form-label">Descripción (OP)</label>
               <input
                 type="text"
                 className="form-control"

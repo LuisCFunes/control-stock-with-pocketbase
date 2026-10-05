@@ -158,59 +158,108 @@ function addClientInfo(doc, clientData) {
   const observacion = (clientData.observacion || "").trim();
   if (observacion && observacion !== "—") {
     currentY += 5;
-    doc.text(`Observacion: ${observacion}`, LAYOUT.margin, currentY);
+    doc.text(`Descripcion: ${observacion}`, LAYOUT.margin, currentY);
   }
 
   return currentY;
 }
 
 /**
- * Adds the items table to the PDF
+ * Adds the items table to the PDF with borders/gridlines
  * @param {jsPDF} doc - PDF document
  * @param {Array} cart - Cart items
  * @param {number} [startY] - Vertical starting position
+ * @param {string} [observacionGeneral] - General invoice observation/description
  */
-function addItemsTable(doc, cart, startY = LAYOUT.tableMargin) {
-  const columns = ["Producto", "Cantidad", "Precio", "Total"];
+function addItemsTable(doc, cart, startY = LAYOUT.tableMargin, observacionGeneral = "") {
+  const trimmedObs = (observacionGeneral || "").trim();
+  const hasDescription = Boolean(
+    (trimmedObs && trimmedObs !== "—") ||
+    cart.some((item) => item.descripcion && item.descripcion.trim())
+  );
+
+  const columns = hasDescription
+    ? ["Producto", "Descripción", "Cantidad", "Precio", "Total"]
+    : ["Producto", "Cantidad", "Precio", "Total"];
+
+  const body = cart.map((item) => {
+    let suffix = "";
+    if (item.tipoImpuesto === "exonerado" || item.exonerado) {
+      suffix = " (EX)";
+    } else if (item.tipoImpuesto === "exento" || item.exento) {
+      suffix = " (E)";
+    } else if (item.tipoImpuesto === "18") {
+      suffix = " (18%)";
+    }
+
+    const priceFormatted = Number(item.Precio || 0).toFixed(2);
+    const totalFormatted = `${(Number(item.Precio || 0) * Number(item.Cantidad || 0)).toFixed(2)} Lps.`;
+
+    if (hasDescription) {
+      const itemDesc = (item.descripcion || trimmedObs || "—").trim();
+      return [
+        `${item.Nombre}${suffix}`,
+        itemDesc,
+        item.Cantidad,
+        priceFormatted,
+        totalFormatted,
+      ];
+    }
+
+    return [
+      `${item.Nombre}${suffix}`,
+      item.Cantidad,
+      priceFormatted,
+      totalFormatted,
+    ];
+  });
+
+  const columnStyles = hasDescription
+    ? {
+        0: { halign: "left" },
+        1: { halign: "left" },
+        2: { cellWidth: 24, halign: "center" },
+        3: { cellWidth: 26, halign: "right" },
+        4: { cellWidth: 28, halign: "right" },
+      }
+    : {
+        0: { halign: "left" },
+        1: { cellWidth: 26, halign: "center" },
+        2: { cellWidth: 30, halign: "right" },
+        3: { cellWidth: 32, halign: "right" },
+      };
 
   doc.autoTable({
     head: [columns],
-    body: cart.map((item) => {
-      let suffix = "";
-      if (item.tipoImpuesto === "exonerado" || item.exonerado) {
-        suffix = " (EX)";
-      } else if (item.tipoImpuesto === "exento" || item.exento) {
-        suffix = " (E)";
-      } else if (item.tipoImpuesto === "18") {
-        suffix = " (18%)";
-      }
-      return [
-        `${item.Nombre}${suffix}`,
-        item.Cantidad,
-        Number(item.Precio || 0).toFixed(2),
-        `${(Number(item.Precio || 0) * Number(item.Cantidad || 0)).toFixed(2)} Lps.`,
-      ];
-    }),
-    theme: "plain",
+    body,
+    theme: "grid",
     headStyles: {
       fillColor: STYLES.primaryColor,
       textColor: "white",
-      fontSize: STYLES.normalFontSize
+      fontSize: 10,
+      fontStyle: "bold",
+      halign: "center",
+      lineWidth: 0.15,
+      lineColor: [180, 180, 180]
     },
     startY: startY,
-    margin: { top: startY },
+    margin: { top: startY, left: LAYOUT.margin, right: LAYOUT.margin },
     tableWidth: "auto",
-    styles: { fontSize: STYLES.smallFontSize }
+    styles: {
+      fontSize: STYLES.smallFontSize,
+      lineWidth: 0.15,
+      lineColor: [200, 200, 200]
+    },
+    columnStyles,
   });
 }
 
 /**
- * Adds the totals and tax information to the PDF
+ * Adds the totals and tax information to the PDF, anchored towards the bottom
  * @param {jsPDF} doc - PDF document
  * @param {Object} totals - Total amounts
  */
 function addTotalsSection(doc, totals) {
-  const startY = doc.autoTable.previous.finalY + 10;
   doc.setFontSize(STYLES.normalFontSize);
 
   const formatAmount = (val) => {
@@ -219,23 +268,42 @@ function addTotalsSection(doc, totals) {
   };
 
   const lines = [
-    { label: TEXTS.discountRebates, value: totals.cantidades.cantidadDescuento },
-    { label: TEXTS.exoneratedAmount, value: totals.cantidades.cantidadExonerado },
-    { label: TEXTS.exemptAmount, value: totals.cantidades.cantidadExento },
-    { label: TEXTS.taxable15, value: totals.base15 },
-    { label: TEXTS.taxable18, value: totals.base18 },
-    { label: TEXTS.tax15, value: totals.isv15 },
-    { label: TEXTS.tax18, value: totals.isv18 },
-    { label: TEXTS.total, value: totals.totalFactura }
+    { label: TEXTS.discountRebates, value: totals.cantidades?.cantidadDescuento ?? totals.discount_amount ?? 0 },
+    { label: TEXTS.exoneratedAmount, value: totals.cantidades?.cantidadExonerado ?? totals.exonerado_amount ?? 0 },
+    { label: TEXTS.exemptAmount, value: totals.cantidades?.cantidadExento ?? totals.exento_amount ?? 0 },
+    { label: TEXTS.taxable15, value: totals.base15 ?? 0 },
+    { label: TEXTS.taxable18, value: totals.base18 ?? 0 },
+    { label: TEXTS.tax15, value: totals.isv15 ?? 0 },
+    { label: TEXTS.tax18, value: totals.isv18 ?? 0 },
+    { label: TEXTS.total, value: totals.totalFactura ?? totals.Total ?? 0 }
   ];
 
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const lineHeight = 6.5;
+  const sectionHeight = (lines.length * lineHeight) + 16;
+  const bottomMargin = 16;
+  const preferredStartY = pageHeight - sectionHeight - bottomMargin;
+
+  const previousFinalY = doc.autoTable?.previous?.finalY || 0;
+  let startY = Math.max(preferredStartY, previousFinalY + 8);
+
+  if (startY + sectionHeight > pageHeight - bottomMargin + 4) {
+    doc.addPage();
+    startY = preferredStartY;
+  }
+
   lines.forEach((line, index) => {
-    const y = startY + (index * 7);
+    const y = startY + (index * lineHeight);
     doc.text(`${line.label}:`, LAYOUT.margin, y);
     doc.text(`${formatAmount(line.value)}`, LAYOUT.rightAlignX, y);
   });
 
-  doc.text(`${TEXTS.amount}: ${totals.totalWords}`, LAYOUT.margin, startY + (lines.length * 7) + 6);
+  const amountY = startY + (lines.length * lineHeight) + 6;
+  const splitAmount = doc.splitTextToSize(
+    `${TEXTS.amount}: ${totals.totalWords}`,
+    LAYOUT.pageWidth - (LAYOUT.margin * 2)
+  );
+  doc.text(splitAmount, LAYOUT.margin, amountY);
 }
 
 /**
@@ -284,7 +352,7 @@ export default function sendPdf(params, options = {}) {
     addHeader(doc, params);
     const clientInfoEndY = addClientInfo(doc, params);
     const tableStartY = Math.max(clientInfoEndY + 8, 68);
-    addItemsTable(doc, params.cart, tableStartY);
+    addItemsTable(doc, params.cart, tableStartY, params.observacion);
     addTotalsSection(doc, params);
 
     // Handle output options
